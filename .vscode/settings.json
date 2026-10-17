@@ -1,0 +1,24 @@
+{
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--query-driver=/usr/bin/c++,/usr/bin/g++,/usr/bin/g++-*,/usr/bin/clang++,/usr/bin/clang++-*,/usr/lib/llvm-*/bin/clang++",
+    "--header-insertion=never",
+    "--background-index"
+  ],
+  "clangd.fallbackFlags": [
+    "-std=c++23",
+    "-Wall",
+    "-Wextra",
+    "-I${workspaceFolder}/include",
+    "-I${workspaceFolder}/build/_deps/doctest-src"
+  ],
+  "clangd.path": "/usr/lib/llvm-22/bin/clangd",
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.autocomplete": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "C_Cpp.formatting": "disabled",
+
+  "cmake.configureOnOpen": true,
+  "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
+  "cmake.preferredGenerators": ["Unix Makefiles", "Ninja"]
+}

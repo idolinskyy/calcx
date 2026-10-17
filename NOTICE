@@ -1,0 +1,28 @@
+calx
+Copyright (C) 2026 Ihor Dolinskyi
+
+This program is free software under the GNU General Public License v3
+(see LICENSE).
+
+---
+
+Third-party software (fetched at build time; not shipped in this repository)
+
+1. replxx (https://github.com/AmokHuginnsson/replxx), tag release-0.0.4
+   Used by the interactive REPL (line editing, history, syntax highlighting).
+   License: BSD-style (see upstream LICENSE.md).
+   Copyright (c) 2017-2018 Marcin Konarski;
+   Copyright (c) 2010 Salvatore Sanfilippo;
+   Copyright (c) 2010 Pieter Noordhuis.
+   Also includes:
+
+   - wcwidth.cpp — Markus Kuhn (permission notice in upstream LICENSE.md)
+   - ConvertUTF.cpp — Copyright 2001-2004 Unicode, Inc. (see upstream notice)
+
+2. doctest (https://github.com/doctest/doctest), tag v2.4.11
+   Used only for unit tests (calc_tests), not linked into the calc binary.
+   License: MIT
+   Copyright (c) 2016-2023 Viktor Kirilov
+
+Full license texts are in the corresponding upstream repositories under
+build/\_deps/ after CMake FetchContent runs.
