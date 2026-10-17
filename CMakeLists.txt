@@ -46,6 +46,7 @@ FetchContent_Declare(
   replxx
   GIT_REPOSITORY https://github.com/AmokHuginnsson/replxx.git
   GIT_TAG release-0.0.4
+  EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(replxx)
 # Upstream має багато -Wsign-conversion; для наших таргетів — system headers.
@@ -63,10 +64,14 @@ target_link_libraries(calc_cli PRIVATE calc replxx::replxx)
 set_target_properties(calc_cli PROPERTIES OUTPUT_NAME calc)
 target_compile_options(calc_cli PRIVATE -Wall -Wextra -Wpedantic)
 
+include(GNUInstallDirs)
+install(TARGETS calc_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 FetchContent_Declare(
   doctest
   GIT_REPOSITORY https://github.com/doctest/doctest.git
   GIT_TAG v2.4.11
+  EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(doctest)
 

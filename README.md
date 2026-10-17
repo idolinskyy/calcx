@@ -23,6 +23,24 @@ cmake --build build -j
 | `build/calc_tests` | Набір тестів                                |
 | `build/libcalc.a`  | Бібліотека (лексер, парсер, компілятор, ВМ) |
 
+### Встановлення
+
+У `PATH` (типово `~/.local/bin`, без root):
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+```
+
+Після цього можна запускати просто `calc` з будь-якого каталогу.
+Переконайтесь, що `$HOME/.local/bin` є в `PATH` (у вас уже так, якщо
+`echo $PATH` його показує).
+
+Системно (потрібен sudo):
+
+```bash
+sudo cmake --install build --prefix /usr/local
+```
+
 ### Запуск
 
 Інтерактивно (без аргументів у терміналі) — REPL (**replxx**: історія `↑`/`↓`,
@@ -30,7 +48,8 @@ cmake --build build -j
 накопичуються в сесію, тож `let` / `fun` лишаються між введеннями:
 
 ```bash
-./build/calc
+calc          # після встановлення
+# або: ./build/calc
 ```
 
 ```
