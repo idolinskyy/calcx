@@ -17,8 +17,13 @@ using calc::is_complex;
 using calc::is_integer;
 using calc::is_rational;
 using calc::is_real;
+using calc::make_array;
+using calc::make_record;
+using calc::mod;
 using calc::mul;
 using calc::negate;
+using calc::posit;
+using calc::pow_op;
 using calc::Rational;
 using calc::Real;
 using calc::sub;
@@ -74,6 +79,16 @@ TEST_CASE("unary minus on integer") {
   CHECK(overflow.error() == ErrorCode::IntegerOverflow);
 }
 
+TEST_CASE("unary plus rejects non-numeric") {
+  auto ok = posit(Value{Integer{5}});
+  REQUIRE(ok);
+  CHECK(std::get<Integer>(*ok) == 5);
+
+  auto bad = posit(Value{calc::Boolean{true}});
+  REQUIRE_FALSE(bad);
+  CHECK(bad.error() == ErrorCode::InvalidOperation);
+}
+
 TEST_CASE("integer overflow is error") {
   const Integer max = std::numeric_limits<Integer>::max();
   auto r = add(Value{max}, Value{Integer{1}});
@@ -83,6 +98,21 @@ TEST_CASE("integer overflow is error") {
   auto m = mul(Value{Integer{1} << 62}, Value{Integer{4}});
   REQUIRE_FALSE(m);
   CHECK(m.error() == ErrorCode::IntegerOverflow);
+}
+
+TEST_CASE("integer mod by plus or minus one is zero without UB") {
+  const Integer min = std::numeric_limits<Integer>::min();
+  auto a = mod(Value{min}, Value{Integer{-1}});
+  REQUIRE(a);
+  CHECK(std::get<Integer>(*a) == 0);
+
+  auto b = mod(Value{min}, Value{Integer{1}});
+  REQUIRE(b);
+  CHECK(std::get<Integer>(*b) == 0);
+
+  auto c = mod(Value{Integer{7}}, Value{Integer{-1}});
+  REQUIRE(c);
+  CHECK(std::get<Integer>(*c) == 0);
 }
 
 TEST_CASE("division always promotes to Real without Complex") {
@@ -128,6 +158,33 @@ TEST_CASE("complex arithmetic") {
   auto m = mul(Value{Complex{1.0L, 1.0L}}, Value{Complex{1.0L, -1.0L}});
   REQUIRE(m);
   CHECK(near_complex(*m, Complex{2.0L, 0.0L}));
+}
+
+TEST_CASE("arithmetic rejects array record and string") {
+  const Value arr = make_array({Value{Integer{1}}});
+  const Value rec = make_record({{"x", Value{Integer{1}}}});
+  const Value str = Value{std::string{"a"}};
+
+  CHECK(add(Value{Integer{1}}, arr).error() == ErrorCode::InvalidOperation);
+  CHECK(mul(arr, Value{Integer{2}}).error() == ErrorCode::InvalidOperation);
+  CHECK(sub(rec, rec).error() == ErrorCode::InvalidOperation);
+  CHECK(div(Value{Integer{1}}, arr).error() == ErrorCode::InvalidOperation);
+  CHECK(mod(arr, Value{Integer{2}}).error() == ErrorCode::InvalidOperation);
+  CHECK(pow_op(arr, Value{Integer{2}}).error() == ErrorCode::InvalidOperation);
+  CHECK(negate(arr).error() == ErrorCode::InvalidOperation);
+  CHECK(negate(str).error() == ErrorCode::InvalidOperation);
+}
+
+TEST_CASE("real divided by rational promotes to real") {
+  auto a = div(Value{Real{1.0L}}, Value{Rational{1, 2}});
+  REQUIRE(a);
+  CHECK(is_real(*a));
+  CHECK(near_real(*a, 2.0L));
+
+  auto b = div(Value{Rational{1, 2}}, Value{Real{2.0L}});
+  REQUIRE(b);
+  CHECK(is_real(*b));
+  CHECK(near_real(*b, 0.25L));
 }
 
 TEST_CASE("division by zero") {

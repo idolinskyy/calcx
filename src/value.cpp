@@ -3,10 +3,12 @@
 
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <format>
 #include <limits>
 #include <numeric>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 namespace calc {
@@ -109,6 +111,15 @@ namespace {
 
 [[nodiscard]] bool involves_boolean(const Value &a, const Value &b) {
   return is_boolean(a) || is_boolean(b);
+}
+
+/// Числові операнди арифметики (не Boolean / Array / Record / String).
+[[nodiscard]] bool is_numeric_value(const Value &v) {
+  return is_integer(v) || is_rational(v) || is_real(v) || is_complex(v);
+}
+
+[[nodiscard]] bool involves_non_numeric(const Value &a, const Value &b) {
+  return !is_numeric_value(a) || !is_numeric_value(b);
 }
 
 [[nodiscard]] ArithResult check_finite(Value v) {
@@ -263,23 +274,56 @@ enum class Cmp : int { Lt = -1, Eq = 0, Gt = 1 };
   return Cmp::Eq;
 }
 
-[[nodiscard]] bool values_equal(const Value &a, const Value &b);
+struct EqualSeen {
+  // Пари ідентичностей shared даних (впорядковані), щоб розірвати цикли.
+  std::unordered_set<std::uintptr_t> pairs;
+};
 
-[[nodiscard]] bool arrays_equal(const Array &a, const Array &b) {
+[[nodiscard]] std::uintptr_t pair_key(const void *a, const void *b) {
+  const auto x = reinterpret_cast<std::uintptr_t>(a);
+  const auto y = reinterpret_cast<std::uintptr_t>(b);
+  const auto lo = x < y ? x : y;
+  const auto hi = x < y ? y : x;
+  // Просте змішування двох покажчиків у один ключ.
+  return lo * 1315423911u ^ (hi + 0x9e3779b97f4a7c15ull);
+}
+
+[[nodiscard]] bool values_equal(const Value &a, const Value &b, EqualSeen &seen);
+
+[[nodiscard]] bool arrays_equal(const Array &a, const Array &b, EqualSeen &seen) {
+  const void *pa = a.data.get();
+  const void *pb = b.data.get();
+  if (pa == pb) {
+    return true;
+  }
+  const auto key = pair_key(pa, pb);
+  if (!seen.pairs.insert(key).second) {
+    return true; // уже порівнюємо цю пару — цикл
+  }
   const auto &ai = array_items(a);
   const auto &bi = array_items(b);
   if (ai.size() != bi.size()) {
     return false;
   }
   for (std::size_t i = 0; i < ai.size(); ++i) {
-    if (!values_equal(ai[i], bi[i])) {
+    if (!values_equal(ai[i], bi[i], seen)) {
       return false;
     }
   }
   return true;
 }
 
-[[nodiscard]] bool records_equal(const Record &a, const Record &b) {
+[[nodiscard]] bool records_equal(const Record &a, const Record &b,
+                                 EqualSeen &seen) {
+  const void *pa = a.data.get();
+  const void *pb = b.data.get();
+  if (pa == pb) {
+    return true;
+  }
+  const auto key = pair_key(pa, pb);
+  if (!seen.pairs.insert(key).second) {
+    return true;
+  }
   const auto &af = record_fields(a);
   const auto &bf = record_fields(b);
   if (af.size() != bf.size()) {
@@ -287,14 +331,14 @@ enum class Cmp : int { Lt = -1, Eq = 0, Gt = 1 };
   }
   for (const auto &[k, v] : af) {
     const auto it = bf.find(k);
-    if (it == bf.end() || !values_equal(v, it->second)) {
+    if (it == bf.end() || !values_equal(v, it->second, seen)) {
       return false;
     }
   }
   return true;
 }
 
-[[nodiscard]] bool values_equal(const Value &a, const Value &b) {
+[[nodiscard]] bool values_equal(const Value &a, const Value &b, EqualSeen &seen) {
   if (is_string(a) && is_string(b)) {
     return std::get<String>(a) == std::get<String>(b);
   }
@@ -302,10 +346,10 @@ enum class Cmp : int { Lt = -1, Eq = 0, Gt = 1 };
     return false;
   }
   if (is_array(a) && is_array(b)) {
-    return arrays_equal(std::get<Array>(a), std::get<Array>(b));
+    return arrays_equal(std::get<Array>(a), std::get<Array>(b), seen);
   }
   if (is_record(a) && is_record(b)) {
-    return records_equal(std::get<Record>(a), std::get<Record>(b));
+    return records_equal(std::get<Record>(a), std::get<Record>(b), seen);
   }
   if (is_array(a) || is_array(b) || is_record(a) || is_record(b)) {
     return false;
@@ -327,6 +371,11 @@ enum class Cmp : int { Lt = -1, Eq = 0, Gt = 1 };
     return c && *c == Cmp::Eq;
   }
   return as_real(a) == as_real(b);
+}
+
+[[nodiscard]] bool values_equal(const Value &a, const Value &b) {
+  EqualSeen seen;
+  return values_equal(a, b, seen);
 }
 
 [[nodiscard]] bool is_exact_integer(Real x) {
@@ -443,7 +492,7 @@ std::string_view value_type_name(const Value &v) {
 }
 
 ArithResult negate(const Value &v) {
-  if (is_boolean(v)) {
+  if (!is_numeric_value(v)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (const auto *i = std::get_if<Integer>(&v)) {
@@ -464,8 +513,15 @@ ArithResult negate(const Value &v) {
   return check_finite(Value{-std::get<Complex>(v)});
 }
 
+ArithResult posit(const Value &v) {
+  if (!is_numeric_value(v)) {
+    return std::unexpected(ErrorCode::InvalidOperation);
+  }
+  return v;
+}
+
 ArithResult add(const Value &a, const Value &b) {
-  if (involves_boolean(a, b)) {
+  if (involves_boolean(a, b) || involves_non_numeric(a, b)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (involves_complex(a, b)) {
@@ -481,7 +537,7 @@ ArithResult add(const Value &a, const Value &b) {
 }
 
 ArithResult sub(const Value &a, const Value &b) {
-  if (involves_boolean(a, b)) {
+  if (involves_boolean(a, b) || involves_non_numeric(a, b)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (involves_complex(a, b)) {
@@ -497,7 +553,7 @@ ArithResult sub(const Value &a, const Value &b) {
 }
 
 ArithResult mul(const Value &a, const Value &b) {
-  if (involves_boolean(a, b)) {
+  if (involves_boolean(a, b) || involves_non_numeric(a, b)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (involves_complex(a, b)) {
@@ -513,7 +569,7 @@ ArithResult mul(const Value &a, const Value &b) {
 }
 
 ArithResult div(const Value &a, const Value &b) {
-  if (involves_boolean(a, b)) {
+  if (involves_boolean(a, b) || involves_non_numeric(a, b)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (involves_complex(a, b)) {
@@ -522,6 +578,14 @@ ArithResult div(const Value &a, const Value &b) {
       return std::unexpected(ErrorCode::DivisionByZero);
     }
     return check_finite(Value{as_complex(a) / cb});
+  }
+  // Real перед Rational — інакше as_rational(Real) падає (bad_variant_access).
+  if (involves_real(a, b)) {
+    const Real rb = as_real(b);
+    if (is_zero_real(rb)) {
+      return std::unexpected(ErrorCode::DivisionByZero);
+    }
+    return check_finite(Value{as_real(a) / rb});
   }
   if (involves_rational(a, b)) {
     return div_rat(as_rational(a), as_rational(b));
@@ -534,13 +598,18 @@ ArithResult div(const Value &a, const Value &b) {
 }
 
 ArithResult mod(const Value &a, const Value &b) {
-  if (involves_boolean(a, b) || involves_complex(a, b)) {
+  if (involves_boolean(a, b) || involves_complex(a, b) ||
+      involves_non_numeric(a, b)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (is_integer(a) && is_integer(b)) {
     const Integer rb = std::get<Integer>(b);
     if (rb == 0) {
       return std::unexpected(ErrorCode::DivisionByZero);
+    }
+    // INT64_MIN % -1 — UB у C++; математичний остаток завжди 0 при |b|==1.
+    if (rb == -1 || rb == 1) {
+      return Value{Integer{0}};
     }
     return Value{std::get<Integer>(a) % rb};
   }
@@ -553,7 +622,7 @@ ArithResult mod(const Value &a, const Value &b) {
 }
 
 ArithResult pow_op(const Value &base, const Value &exp) {
-  if (involves_boolean(base, exp)) {
+  if (involves_boolean(base, exp) || involves_non_numeric(base, exp)) {
     return std::unexpected(ErrorCode::InvalidOperation);
   }
   if (involves_complex(base, exp)) {
@@ -685,7 +754,8 @@ ArithResult logical_or(const Value &a, const Value &b) {
   return Value{Boolean{std::get<Boolean>(a) || std::get<Boolean>(b)}};
 }
 
-std::string format_value(const Value &v) {
+[[nodiscard]] std::string
+format_value_impl(const Value &v, std::unordered_set<const void *> &visiting) {
   if (const auto *b = std::get_if<Boolean>(&v)) {
     return *b ? "true" : "false";
   }
@@ -719,18 +789,27 @@ std::string format_value(const Value &v) {
     return result;
   }
   if (const auto *arr = std::get_if<Array>(&v)) {
+    const void *id = arr->data.get();
+    if (!visiting.insert(id).second) {
+      return "...";
+    }
     std::string out = "[";
     const auto &items = array_items(*arr);
     for (std::size_t i = 0; i < items.size(); ++i) {
       if (i > 0) {
         out += ", ";
       }
-      out += format_value(items[i]);
+      out += format_value_impl(items[i], visiting);
     }
     out += "]";
+    visiting.erase(id);
     return out;
   }
   if (const auto *rec = std::get_if<Record>(&v)) {
+    const void *id = rec->data.get();
+    if (!visiting.insert(id).second) {
+      return "...";
+    }
     std::string out = "{";
     bool first = true;
     for (const auto &[k, val] : record_fields(*rec)) {
@@ -740,12 +819,18 @@ std::string format_value(const Value &v) {
       first = false;
       out += k;
       out += ": ";
-      out += format_value(val);
+      out += format_value_impl(val, visiting);
     }
     out += "}";
+    visiting.erase(id);
     return out;
   }
   return std::get<String>(v);
+}
+
+std::string format_value(const Value &v) {
+  std::unordered_set<const void *> visiting;
+  return format_value_impl(v, visiting);
 }
 
 void print_value(std::ostream &os, const Value &v) { os << format_value(v); }
@@ -788,7 +873,8 @@ ArithResult make_iter_items(const Value &coll, std::uint8_t mode) {
   if (is_array(coll)) {
     const auto &items = array_items(std::get<Array>(coll));
     if (mode == 1) {
-      return coll; // ті самі елементи (посилання на масив)
+      // Знімок елементів: push/pop у тілі for-in не змінює довжину ітерації.
+      return Value{make_array(std::vector<Value>(items.begin(), items.end()))};
     }
     std::vector<Value> pairs;
     pairs.reserve(items.size());

@@ -154,7 +154,8 @@ void dump_opcode_legend(std::ostream &out) {
   out << "# таблиця опкодів (число = байт у коді):\n";
   const OpCode all[] = {
       OpCode::Halt,       OpCode::LoadConst,  OpCode::LoadLocal,
-      OpCode::StoreLocal, OpCode::Neg,        OpCode::Add,
+      OpCode::StoreLocal, OpCode::Neg,        OpCode::Pos,
+      OpCode::Add,
       OpCode::Sub,        OpCode::Mul,        OpCode::Div,
       OpCode::Mod,        OpCode::Pow,        OpCode::Eq,
       OpCode::Ne,         OpCode::Lt,         OpCode::Le,
@@ -196,6 +197,8 @@ std::string_view opcode_name(OpCode op) {
     return "StoreLocal";
   case OpCode::Neg:
     return "Neg";
+  case OpCode::Pos:
+    return "Pos";
   case OpCode::Add:
     return "Add";
   case OpCode::Sub:

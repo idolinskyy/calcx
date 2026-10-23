@@ -5,6 +5,7 @@
 #include "calc/format.hpp"
 
 #include <expected>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -12,6 +13,10 @@
 
 namespace calc {
 namespace {
+
+/// Байткод Call / CallBuiltin / PrintFmt кодує argc як u8.
+constexpr std::size_t kMaxArgCount = 255;
+constexpr std::size_t kMaxU16 = std::numeric_limits<std::uint16_t>::max();
 
 class Compiler {
 public:
@@ -37,7 +42,12 @@ public:
       }
     }
     chunk_.emit(OpCode::Halt);
-    chunk_.local_count = next_slot_;
+    if (next_slot_ > kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, {},
+                "Забагато локальних змінних (макс. 65535)"));
+    }
+    chunk_.local_count = static_cast<std::uint16_t>(next_slot_);
     chunk_.local_names = std::move(local_names_);
 
     // 3) Тіла функцій після Halt (лише через Call).
@@ -46,6 +56,12 @@ public:
       if (!r) {
         return std::unexpected(r.error());
       }
+    }
+    if (chunk_.code.size() > kMaxU16 + 1) {
+      // Адреси інструкцій — u16; розмір може бути 65536 (останній байт @65535).
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, {},
+                "Завеликий байткод (адресa > 65535)"));
     }
     return std::move(chunk_);
   }
@@ -62,7 +78,7 @@ private:
   /// Стек областей видимості (імʼя → абсолютний слот).
   std::vector<std::unordered_map<std::string, std::uint16_t>> scopes_{{}};
   /// Наступний вільний слот локалі (не зменшується при виході з блоку).
-  std::uint16_t next_slot_{0};
+  std::size_t next_slot_{0};
   std::vector<std::string> local_names_;
   std::vector<LoopCtx> loops_;
   std::unordered_map<std::string, std::uint16_t> fun_index_;
@@ -78,15 +94,74 @@ private:
 
   void pop_scope() { scopes_.pop_back(); }
 
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  code_addr(SourcePos pos) {
+    if (chunk_.code.size() > kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, pos,
+                "Завеликий байткод (адресa > 65535)"));
+    }
+    return static_cast<std::uint16_t>(chunk_.code.size());
+  }
+
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  alloc_slot(SourcePos pos) {
+    // local_count — u16; слоти 0..65534 (65535 штук).
+    if (next_slot_ >= kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, pos,
+                "Забагато локальних змінних (макс. 65535)"));
+    }
+    return static_cast<std::uint16_t>(next_slot_++);
+  }
+
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  add_const(Value v, SourcePos pos) {
+    auto idx = chunk_.add_constant(std::move(v));
+    if (!idx) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, pos,
+                "Забагато констант (макс. 65536)"));
+    }
+    return *idx;
+  }
+
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  add_fmt(std::string fmt, SourcePos pos) {
+    auto idx = chunk_.add_format(std::move(fmt));
+    if (!idx) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, pos,
+                "Забагато рядків формату (макс. 65536)"));
+    }
+    return *idx;
+  }
+
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  add_field_name(std::string name, SourcePos pos) {
+    auto idx = chunk_.add_name(std::move(name));
+    if (!idx) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, pos,
+                "Забагато імен полів (макс. 65536)"));
+    }
+    return *idx;
+  }
+
   /// Еміт Jump/JumpIfFalse з плейсхолдером; повертає зміщення u16 для patch.
   [[nodiscard]] std::size_t emit_jump(OpCode op) {
     chunk_.emit_u16(op, 0);
     return chunk_.code.size() - 2;
   }
 
-  void patch_jump(std::size_t offset) {
-    const auto target = static_cast<std::uint16_t>(chunk_.code.size());
-    patch_u16(chunk_, offset, target);
+  [[nodiscard]] std::expected<void, Diagnostic> patch_jump(std::size_t offset,
+                                                           SourcePos pos) {
+    auto target = code_addr(pos);
+    if (!target) {
+      return std::unexpected(target.error());
+    }
+    patch_u16(chunk_, offset, *target);
+    return {};
   }
 
   void patch_jump_to(std::size_t offset, std::uint16_t target) {
@@ -119,6 +194,10 @@ private:
       return std::unexpected(error(ErrorCode::RedeclaredVariable, fun.name_pos,
                                    "Повторне оголошення функції"));
     }
+    if (fun.params.size() > kMaxArgCount) {
+      return std::unexpected(error(ErrorCode::ArityMismatch, fun.name_pos,
+                                   "Занадто багато параметрів функції (макс. 255)"));
+    }
     // Унікальні імена параметрів.
     std::unordered_map<std::string, bool> seen;
     for (const auto &p : fun.params) {
@@ -127,6 +206,11 @@ private:
                                      "Повторний параметр функції"));
       }
       seen.emplace(p.name, true);
+    }
+    if (chunk_.functions.size() > kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, fun.name_pos,
+                "Забагато функцій (макс. 65536)"));
     }
     FunctionProto proto;
     proto.name = fun.name;
@@ -148,12 +232,20 @@ private:
     in_function_ = true;
 
     for (const auto &p : fun.params) {
-      const auto slot = next_slot_++;
-      declare_local(p.name, slot);
+      auto slot = alloc_slot(p.pos);
+      if (!slot) {
+        in_function_ = false;
+        return std::unexpected(slot.error());
+      }
+      declare_local(p.name, *slot);
     }
 
-    chunk_.functions[idx].entry =
-        static_cast<std::uint16_t>(chunk_.code.size());
+    auto entry = code_addr(fun.name_pos);
+    if (!entry) {
+      in_function_ = false;
+      return std::unexpected(entry.error());
+    }
+    chunk_.functions[idx].entry = *entry;
 
     auto body = compile_stmt(*fun.body);
     if (!body) {
@@ -162,11 +254,21 @@ private:
     }
 
     // Неявний return 0, якщо тіло не завершилось Return.
-    const auto zero = chunk_.add_constant(Value{Integer{0}});
-    chunk_.emit_u16(OpCode::LoadConst, zero);
+    auto zero = add_const(Value{Integer{0}}, fun.name_pos);
+    if (!zero) {
+      in_function_ = false;
+      return std::unexpected(zero.error());
+    }
+    chunk_.emit_u16(OpCode::LoadConst, *zero);
     chunk_.emit(OpCode::Return);
 
-    chunk_.functions[idx].local_count = next_slot_;
+    if (next_slot_ > kMaxU16) {
+      in_function_ = false;
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, fun.name_pos,
+                "Забагато локальних змінних (макс. 65535)"));
+    }
+    chunk_.functions[idx].local_count = static_cast<std::uint16_t>(next_slot_);
     chunk_.functions[idx].local_names = std::move(local_names_);
     in_function_ = false;
     return {};
@@ -193,9 +295,12 @@ private:
                                      binding.name_pos,
                                      "Повторне оголошення змінної"));
       }
-      const auto slot = next_slot_++;
-      declare_local(binding.name, slot);
-      chunk_.emit_u16(OpCode::StoreLocal, slot);
+      auto slot = alloc_slot(binding.name_pos);
+      if (!slot) {
+        return std::unexpected(slot.error());
+      }
+      declare_local(binding.name, *slot);
+      chunk_.emit_u16(OpCode::StoreLocal, *slot);
     }
     return {};
   }
@@ -240,8 +345,11 @@ private:
       if (!value) {
         return std::unexpected(value.error());
       }
-      const auto ni = chunk_.add_name(fld->field);
-      chunk_.emit_u16(OpCode::StoreField, ni);
+      auto ni = add_field_name(fld->field, fld->pos);
+      if (!ni) {
+        return std::unexpected(ni.error());
+      }
+      chunk_.emit_u16(OpCode::StoreField, *ni);
       return {};
     }
     return std::unexpected(error(ErrorCode::UnexpectedToken, stmt.pos,
@@ -261,14 +369,22 @@ private:
             error(ErrorCode::FormatMismatch, stmt.format_pos,
                   "Кількість плейсхолдерів не збігається з аргументами"));
       }
+      if (stmt.args.size() > kMaxArgCount) {
+        return std::unexpected(
+            error(ErrorCode::ArityMismatch, stmt.format_pos,
+                  "Занадто багато аргументів print (макс. 255)"));
+      }
       for (const auto &arg : stmt.args) {
         auto r = compile_expr(*arg);
         if (!r) {
           return std::unexpected(r.error());
         }
       }
-      const auto idx = chunk_.add_format(stmt.format);
-      chunk_.emit_print_fmt(idx, static_cast<std::uint8_t>(stmt.args.size()));
+      auto idx = add_fmt(stmt.format, stmt.format_pos);
+      if (!idx) {
+        return std::unexpected(idx.error());
+      }
+      chunk_.emit_print_fmt(*idx, static_cast<std::uint8_t>(stmt.args.size()));
       return {};
     }
 
@@ -314,48 +430,59 @@ private:
 
     if (stmt.else_branch) {
       const auto end_jump = emit_jump(OpCode::Jump);
-      patch_jump(else_jump);
+      if (auto p = patch_jump(else_jump, stmt.pos); !p) {
+        return p;
+      }
       auto else_r = compile_stmt(*stmt.else_branch);
       if (!else_r) {
         return std::unexpected(else_r.error());
       }
-      patch_jump(end_jump);
-    } else {
-      patch_jump(else_jump);
+      return patch_jump(end_jump, stmt.pos);
     }
-    return {};
+    return patch_jump(else_jump, stmt.pos);
   }
 
   [[nodiscard]] std::expected<void, Diagnostic>
   compile_one(const WhileStmt &stmt) {
-    const auto loop_start = static_cast<std::uint16_t>(chunk_.code.size());
+    auto loop_start = code_addr(stmt.pos);
+    if (!loop_start) {
+      return std::unexpected(loop_start.error());
+    }
     auto cond = compile_expr(*stmt.condition);
     if (!cond) {
       return std::unexpected(cond.error());
     }
     const auto exit_jump = emit_jump(OpCode::JumpIfFalse);
 
-    loops_.push_back(LoopCtx{loop_start, {}, {}});
+    loops_.push_back(LoopCtx{*loop_start, {}, {}});
     auto body = compile_stmt(*stmt.body);
     if (!body) {
       loops_.pop_back();
       return std::unexpected(body.error());
     }
-    chunk_.emit_u16(OpCode::Jump, loop_start);
+    chunk_.emit_u16(OpCode::Jump, *loop_start);
 
     auto ctx = std::move(loops_.back());
     loops_.pop_back();
-    patch_jump(exit_jump);
+    if (auto p = patch_jump(exit_jump, stmt.pos); !p) {
+      return p;
+    }
     for (const auto off : ctx.break_patches) {
-      patch_jump(off);
+      if (auto p = patch_jump(off, stmt.pos); !p) {
+        return p;
+      }
     }
     return {};
   }
 
-  [[nodiscard]] std::uint16_t alloc_temp(std::string name) {
-    const auto slot = next_slot_++;
-    declare_local(std::move(name), slot);
-    return slot;
+  [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
+  alloc_temp(std::string name, SourcePos pos) {
+    auto slot = alloc_slot(pos);
+    if (!slot) {
+      return std::unexpected(slot.error());
+    }
+    declare_local(std::move(name), *slot);
+    return *slot;
   }
 
   [[nodiscard]] std::expected<void, Diagnostic>
@@ -371,20 +498,40 @@ private:
     chunk_.emit(OpCode::MakeIter);
     chunk_.code.push_back(mode);
 
-    const auto it_slot = alloc_temp("__it");
-    chunk_.emit_u16(OpCode::StoreLocal, it_slot);
+    auto it_slot = alloc_temp("__it", stmt.pos);
+    if (!it_slot) {
+      pop_scope();
+      return std::unexpected(it_slot.error());
+    }
+    chunk_.emit_u16(OpCode::StoreLocal, *it_slot);
 
-    const auto i_slot = alloc_temp("__i");
-    const auto zero = chunk_.add_constant(Value{Integer{0}});
-    chunk_.emit_u16(OpCode::LoadConst, zero);
-    chunk_.emit_u16(OpCode::StoreLocal, i_slot);
+    auto i_slot = alloc_temp("__i", stmt.pos);
+    if (!i_slot) {
+      pop_scope();
+      return std::unexpected(i_slot.error());
+    }
+    auto zero = add_const(Value{Integer{0}}, stmt.pos);
+    if (!zero) {
+      pop_scope();
+      return std::unexpected(zero.error());
+    }
+    chunk_.emit_u16(OpCode::LoadConst, *zero);
+    chunk_.emit_u16(OpCode::StoreLocal, *i_slot);
 
-    const auto one = chunk_.add_constant(Value{Integer{1}});
-    const auto loop_start = static_cast<std::uint16_t>(chunk_.code.size());
+    auto one = add_const(Value{Integer{1}}, stmt.pos);
+    if (!one) {
+      pop_scope();
+      return std::unexpected(one.error());
+    }
+    auto loop_start = code_addr(stmt.pos);
+    if (!loop_start) {
+      pop_scope();
+      return std::unexpected(loop_start.error());
+    }
 
     // cond: i < len(it)
-    chunk_.emit_u16(OpCode::LoadLocal, i_slot);
-    chunk_.emit_u16(OpCode::LoadLocal, it_slot);
+    chunk_.emit_u16(OpCode::LoadLocal, *i_slot);
+    chunk_.emit_u16(OpCode::LoadLocal, *it_slot);
     chunk_.emit_call(OpCode::CallBuiltin,
                      static_cast<std::uint16_t>(BuiltinId::Len), 1);
     chunk_.emit(OpCode::Lt);
@@ -393,32 +540,52 @@ private:
     // bind variables in inner scope so each iteration is fresh let
     push_scope();
     if (mode == 1) {
-      chunk_.emit_u16(OpCode::LoadLocal, it_slot);
-      chunk_.emit_u16(OpCode::LoadLocal, i_slot);
+      chunk_.emit_u16(OpCode::LoadLocal, *it_slot);
+      chunk_.emit_u16(OpCode::LoadLocal, *i_slot);
       chunk_.emit(OpCode::LoadIndex);
-      const auto x_slot = next_slot_++;
-      declare_local(stmt.first, x_slot);
-      chunk_.emit_u16(OpCode::StoreLocal, x_slot);
+      auto x_slot = alloc_slot(stmt.pos);
+      if (!x_slot) {
+        pop_scope();
+        pop_scope();
+        return std::unexpected(x_slot.error());
+      }
+      declare_local(stmt.first, *x_slot);
+      chunk_.emit_u16(OpCode::StoreLocal, *x_slot);
     } else {
-      chunk_.emit_u16(OpCode::LoadLocal, it_slot);
-      chunk_.emit_u16(OpCode::LoadLocal, i_slot);
+      chunk_.emit_u16(OpCode::LoadLocal, *it_slot);
+      chunk_.emit_u16(OpCode::LoadLocal, *i_slot);
       chunk_.emit(OpCode::LoadIndex);
-      const auto e_slot = alloc_temp("__e");
-      chunk_.emit_u16(OpCode::StoreLocal, e_slot);
+      auto e_slot = alloc_temp("__e", stmt.pos);
+      if (!e_slot) {
+        pop_scope();
+        pop_scope();
+        return std::unexpected(e_slot.error());
+      }
+      chunk_.emit_u16(OpCode::StoreLocal, *e_slot);
 
-      chunk_.emit_u16(OpCode::LoadLocal, e_slot);
-      chunk_.emit_u16(OpCode::LoadConst, zero);
+      chunk_.emit_u16(OpCode::LoadLocal, *e_slot);
+      chunk_.emit_u16(OpCode::LoadConst, *zero);
       chunk_.emit(OpCode::LoadIndex);
-      const auto a_slot = next_slot_++;
-      declare_local(stmt.first, a_slot);
-      chunk_.emit_u16(OpCode::StoreLocal, a_slot);
+      auto a_slot = alloc_slot(stmt.pos);
+      if (!a_slot) {
+        pop_scope();
+        pop_scope();
+        return std::unexpected(a_slot.error());
+      }
+      declare_local(stmt.first, *a_slot);
+      chunk_.emit_u16(OpCode::StoreLocal, *a_slot);
 
-      chunk_.emit_u16(OpCode::LoadLocal, e_slot);
-      chunk_.emit_u16(OpCode::LoadConst, one);
+      chunk_.emit_u16(OpCode::LoadLocal, *e_slot);
+      chunk_.emit_u16(OpCode::LoadConst, *one);
       chunk_.emit(OpCode::LoadIndex);
-      const auto b_slot = next_slot_++;
-      declare_local(stmt.second, b_slot);
-      chunk_.emit_u16(OpCode::StoreLocal, b_slot);
+      auto b_slot = alloc_slot(stmt.pos);
+      if (!b_slot) {
+        pop_scope();
+        pop_scope();
+        return std::unexpected(b_slot.error());
+      }
+      declare_local(stmt.second, *b_slot);
+      chunk_.emit_u16(OpCode::StoreLocal, *b_slot);
     }
 
     loops_.push_back(LoopCtx{});
@@ -431,23 +598,33 @@ private:
     }
     pop_scope(); // bindings scope
 
-    const auto continue_target = static_cast<std::uint16_t>(chunk_.code.size());
+    auto continue_target = code_addr(stmt.pos);
+    if (!continue_target) {
+      pop_scope();
+      return std::unexpected(continue_target.error());
+    }
     auto ctx = std::move(loops_.back());
     loops_.pop_back();
     for (const auto off : ctx.continue_patches) {
-      patch_jump_to(off, continue_target);
+      patch_jump_to(off, *continue_target);
     }
 
     // i = i + 1
-    chunk_.emit_u16(OpCode::LoadLocal, i_slot);
-    chunk_.emit_u16(OpCode::LoadConst, one);
+    chunk_.emit_u16(OpCode::LoadLocal, *i_slot);
+    chunk_.emit_u16(OpCode::LoadConst, *one);
     chunk_.emit(OpCode::Add);
-    chunk_.emit_u16(OpCode::StoreLocal, i_slot);
-    chunk_.emit_u16(OpCode::Jump, loop_start);
+    chunk_.emit_u16(OpCode::StoreLocal, *i_slot);
+    chunk_.emit_u16(OpCode::Jump, *loop_start);
 
-    patch_jump(exit_jump);
+    if (auto p = patch_jump(exit_jump, stmt.pos); !p) {
+      pop_scope();
+      return p;
+    }
     for (const auto off : ctx.break_patches) {
-      patch_jump(off);
+      if (auto p = patch_jump(off, stmt.pos); !p) {
+        pop_scope();
+        return p;
+      }
     }
     pop_scope();
     return {};
@@ -465,7 +642,11 @@ private:
       }
     }
 
-    const auto loop_start = static_cast<std::uint16_t>(chunk_.code.size());
+    auto loop_start = code_addr(stmt.pos);
+    if (!loop_start) {
+      pop_scope();
+      return std::unexpected(loop_start.error());
+    }
     if (stmt.condition) {
       auto cond = compile_expr(*stmt.condition);
       if (!cond) {
@@ -473,8 +654,12 @@ private:
         return std::unexpected(cond.error());
       }
     } else {
-      const auto idx = chunk_.add_constant(Value{Boolean{true}});
-      chunk_.emit_u16(OpCode::LoadConst, idx);
+      auto idx = add_const(Value{Boolean{true}}, stmt.pos);
+      if (!idx) {
+        pop_scope();
+        return std::unexpected(idx.error());
+      }
+      chunk_.emit_u16(OpCode::LoadConst, *idx);
     }
     const auto exit_jump = emit_jump(OpCode::JumpIfFalse);
 
@@ -486,11 +671,15 @@ private:
       return std::unexpected(body.error());
     }
 
-    const auto continue_target = static_cast<std::uint16_t>(chunk_.code.size());
+    auto continue_target = code_addr(stmt.pos);
+    if (!continue_target) {
+      pop_scope();
+      return std::unexpected(continue_target.error());
+    }
     auto ctx = std::move(loops_.back());
     loops_.pop_back();
     for (const auto off : ctx.continue_patches) {
-      patch_jump_to(off, continue_target);
+      patch_jump_to(off, *continue_target);
     }
 
     if (stmt.step) {
@@ -500,11 +689,17 @@ private:
         return std::unexpected(step.error());
       }
     }
-    chunk_.emit_u16(OpCode::Jump, loop_start);
+    chunk_.emit_u16(OpCode::Jump, *loop_start);
 
-    patch_jump(exit_jump);
+    if (auto p = patch_jump(exit_jump, stmt.pos); !p) {
+      pop_scope();
+      return p;
+    }
     for (const auto off : ctx.break_patches) {
-      patch_jump(off);
+      if (auto p = patch_jump(off, stmt.pos); !p) {
+        pop_scope();
+        return p;
+      }
     }
     pop_scope();
     return {};
@@ -553,8 +748,11 @@ private:
         return std::unexpected(r.error());
       }
     } else {
-      const auto zero = chunk_.add_constant(Value{Integer{0}});
-      chunk_.emit_u16(OpCode::LoadConst, zero);
+      auto zero = add_const(Value{Integer{0}}, stmt.pos);
+      if (!zero) {
+        return std::unexpected(zero.error());
+      }
+      chunk_.emit_u16(OpCode::LoadConst, *zero);
     }
     chunk_.emit(OpCode::Return);
     return {};
@@ -580,8 +778,11 @@ private:
 
   [[nodiscard]] std::expected<void, Diagnostic>
   compile_node(const LiteralExpr &lit) {
-    const auto idx = chunk_.add_constant(lit.value);
-    chunk_.emit_u16(OpCode::LoadConst, idx);
+    auto idx = add_const(lit.value, lit.pos);
+    if (!idx) {
+      return std::unexpected(idx.error());
+    }
+    chunk_.emit_u16(OpCode::LoadConst, *idx);
     return {};
   }
 
@@ -592,8 +793,11 @@ private:
       return {};
     }
     if (auto c = find_constant(var.name)) {
-      const auto idx = chunk_.add_constant(*c);
-      chunk_.emit_u16(OpCode::LoadConst, idx);
+      auto idx = add_const(*c, var.pos);
+      if (!idx) {
+        return std::unexpected(idx.error());
+      }
+      chunk_.emit_u16(OpCode::LoadConst, *idx);
       return {};
     }
     return std::unexpected(
@@ -602,6 +806,11 @@ private:
 
   [[nodiscard]] std::expected<void, Diagnostic>
   compile_node(const ArrayExpr &arr) {
+    if (arr.elements.size() > kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, arr.pos,
+                "Занадто великий літерал масиву (макс. 65535 елементів)"));
+    }
     for (const auto &el : arr.elements) {
       auto r = compile_expr(*el);
       if (!r) {
@@ -615,6 +824,11 @@ private:
 
   [[nodiscard]] std::expected<void, Diagnostic>
   compile_node(const RecordExpr &rec) {
+    if (rec.fields.size() > kMaxU16) {
+      return std::unexpected(
+          error(ErrorCode::BytecodeLimit, rec.pos,
+                "Занадто великий літерал запису (макс. 65535 полів)"));
+    }
     std::vector<std::uint16_t> name_idxs;
     name_idxs.reserve(rec.fields.size());
     for (const auto &f : rec.fields) {
@@ -622,7 +836,11 @@ private:
       if (!r) {
         return std::unexpected(r.error());
       }
-      name_idxs.push_back(chunk_.add_name(f.name));
+      auto ni = add_field_name(f.name, rec.pos);
+      if (!ni) {
+        return std::unexpected(ni.error());
+      }
+      name_idxs.push_back(*ni);
     }
     chunk_.emit_u16(OpCode::MakeRecord,
                     static_cast<std::uint16_t>(rec.fields.size()));
@@ -652,13 +870,20 @@ private:
     if (!obj) {
       return std::unexpected(obj.error());
     }
-    const auto ni = chunk_.add_name(fld.field);
-    chunk_.emit_u16(OpCode::LoadField, ni);
+    auto ni = add_field_name(fld.field, fld.pos);
+    if (!ni) {
+      return std::unexpected(ni.error());
+    }
+    chunk_.emit_u16(OpCode::LoadField, *ni);
     return {};
   }
 
   [[nodiscard]] std::expected<void, Diagnostic>
   compile_node(const CallExpr &call) {
+    if (call.args.size() > kMaxArgCount) {
+      return std::unexpected(error(ErrorCode::ArityMismatch, call.callee_pos,
+                                   "Занадто багато аргументів (макс. 255)"));
+    }
     for (const auto &arg : call.args) {
       auto r = compile_expr(*arg);
       if (!r) {
@@ -705,7 +930,8 @@ private:
       chunk_.emit(OpCode::Not);
       break;
     case TokenKind::Plus:
-      break; // nop
+      chunk_.emit(OpCode::Pos);
+      break;
     default:
       return std::unexpected(error(ErrorCode::UnexpectedToken, unary.pos,
                                    "Невідомий унарний оператор"));
@@ -803,23 +1029,32 @@ void Chunk::emit_call(OpCode op, std::uint16_t index, std::uint8_t arg_count) {
   code.push_back(arg_count);
 }
 
-std::uint16_t Chunk::add_constant(Value v) {
+std::optional<std::uint16_t> Chunk::add_constant(Value v) {
+  if (constants.size() > std::numeric_limits<std::uint16_t>::max()) {
+    return std::nullopt;
+  }
   const auto idx = static_cast<std::uint16_t>(constants.size());
   constants.push_back(std::move(v));
   return idx;
 }
 
-std::uint16_t Chunk::add_format(std::string fmt) {
+std::optional<std::uint16_t> Chunk::add_format(std::string fmt) {
+  if (formats.size() > std::numeric_limits<std::uint16_t>::max()) {
+    return std::nullopt;
+  }
   const auto idx = static_cast<std::uint16_t>(formats.size());
   formats.push_back(std::move(fmt));
   return idx;
 }
 
-std::uint16_t Chunk::add_name(std::string name) {
+std::optional<std::uint16_t> Chunk::add_name(std::string name) {
   for (std::size_t i = 0; i < names.size(); ++i) {
     if (names[i] == name) {
       return static_cast<std::uint16_t>(i);
     }
+  }
+  if (names.size() > std::numeric_limits<std::uint16_t>::max()) {
+    return std::nullopt;
   }
   const auto idx = static_cast<std::uint16_t>(names.size());
   names.push_back(std::move(name));

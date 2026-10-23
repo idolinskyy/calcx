@@ -4,6 +4,7 @@
 #include "calc/value.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,7 @@ enum class OpCode : std::uint8_t {
   LoadLocal,  ///< u16 slot
   StoreLocal, ///< u16 slot
   Neg,
+  Pos, ///< унарний + : перевірка, що вершина — число
   Add,
   Sub,
   Mul,
@@ -72,9 +74,10 @@ struct Chunk {
   void emit_call(OpCode op, std::uint16_t index, std::uint8_t arg_count);
   void emit_u16_raw(std::uint16_t operand);
 
-  [[nodiscard]] std::uint16_t add_constant(Value v);
-  [[nodiscard]] std::uint16_t add_format(std::string fmt);
-  [[nodiscard]] std::uint16_t add_name(std::string name);
+  /// Індекс у пулі або nullopt, якщо вже 65536 елементів (u16 вичерпано).
+  [[nodiscard]] std::optional<std::uint16_t> add_constant(Value v);
+  [[nodiscard]] std::optional<std::uint16_t> add_format(std::string fmt);
+  [[nodiscard]] std::optional<std::uint16_t> add_name(std::string name);
 };
 
 void patch_u16(Chunk &chunk, std::size_t offset, std::uint16_t value);

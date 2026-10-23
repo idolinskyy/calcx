@@ -158,6 +158,35 @@ TEST_CASE("for-in type error") {
   CHECK(run_code("for (x in 1) { print(x); }") == ErrorCode::InvalidOperation);
 }
 
+TEST_CASE("for-in array snapshots length against push") {
+  // Без знімка push у тілі роздував би ітерацію безмежно.
+  CHECK(run_ok(R"(
+let a = [1];
+let n = 0;
+for (x in a) {
+  push(a, 2);
+  n = n + 1;
+}
+print(n);
+print(len(a));
+)") == "1\n2\n");
+}
+
+TEST_CASE("cyclic array print and equality do not recurse forever") {
+  CHECK(run_ok(R"(
+let a = [1];
+a[0] = a;
+print(a);
+print(a == a);
+)") == "[...]\ntrue\n");
+  CHECK(run_ok(R"(
+let p = {x: 1};
+p.x = p;
+print(p);
+print(p == p);
+)") == "{x: ...}\ntrue\n");
+}
+
 TEST_CASE("block vs record in statement vs expression") {
   CHECK(run_ok(R"(
 {

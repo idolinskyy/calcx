@@ -1,7 +1,11 @@
 // Строгі тести функцій користувача і builtins.
+#include "calc/builtin.hpp"
 #include "calc/engine.hpp"
+#include "calc/value.hpp"
 
+#include <array>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -79,12 +83,52 @@ print(odd(4));
 )") == "true\nfalse\n");
 }
 
+TEST_CASE("deep recursion hits StackOverflow") {
+  CHECK(run_ok(R"(
+fun f(n) {
+  if (n <= 0) return 0;
+  return f(n - 1);
+}
+print(f(100));
+)") == "0\n");
+  CHECK(run_code(R"(
+fun f() { return f(); }
+print(f());
+)") == ErrorCode::StackOverflow);
+}
+
 TEST_CASE("arity mismatch and unknown function") {
   CHECK(run_code("fun f(a) { return a; } print(f());") ==
         ErrorCode::ArityMismatch);
   CHECK(run_code("fun f(a) { return a; } print(f(1, 2));") ==
         ErrorCode::ArityMismatch);
   CHECK(run_code("print(nope(1));") == ErrorCode::UnknownFunction);
+}
+
+TEST_CASE("call argc over 255 is rejected before u8 truncation") {
+  // Без перевірки static_cast<uint8_t>(257)==1 збігався б з arity sin/f.
+  std::string args;
+  for (int i = 0; i < 257; ++i) {
+    if (i) {
+      args += ", ";
+    }
+    args += "0";
+  }
+  CHECK(run_code("print(sin(" + args + "));") == ErrorCode::ArityMismatch);
+  CHECK(run_code("fun f(a) { return a; } print(f(" + args + "));") ==
+        ErrorCode::ArityMismatch);
+}
+
+TEST_CASE("fun with over 255 params is rejected") {
+  std::string params;
+  for (int i = 0; i < 256; ++i) {
+    if (i) {
+      params += ", ";
+    }
+    params += "p" + std::to_string(i);
+  }
+  CHECK(run_code("fun f(" + params + ") { return 0; }") ==
+        ErrorCode::ArityMismatch);
 }
 
 TEST_CASE("return outside function is error") {
@@ -109,6 +153,16 @@ TEST_CASE("builtins sin cos sqrt abs") {
   CHECK(run_ok("print(sqrt(9));") == "3.0\n");
   CHECK(run_ok("print(sin(0));") == "0.0\n");
   CHECK(run_ok("print(cos(0));") == "1.0\n");
+}
+
+TEST_CASE("abs Integer/Rational INT64_MIN overflows") {
+  CHECK(run_code("let m = -9223372036854775807; print(abs(m - 1));") ==
+        ErrorCode::IntegerOverflow);
+  const auto min = std::numeric_limits<calc::Integer>::min();
+  auto r = calc::call_builtin(calc::BuiltinId::Abs,
+                              std::array{calc::Value{calc::Rational{min, 3}}});
+  REQUIRE_FALSE(r);
+  CHECK(r.error() == ErrorCode::IntegerOverflow);
 }
 
 TEST_CASE("builtins trig inverse exp log rounding") {

@@ -65,7 +65,7 @@ struct Options {
 /// Розбір аргументів командного рядка.
 [[nodiscard]] std::optional<Options> parse_args(int argc, char **argv) {
   Options opt;
-  const std::string_view prog = (argc > 0 && argv[0]) ? argv[0] : "calc";
+  const std::string_view prog = (argc > 0 && argv[0]) ? argv[0] : "calx";
 
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   const Options &opt = *parsed;
-  const std::string_view prog = (argc > 0 && argv[0]) ? argv[0] : "calc";
+  const std::string_view prog = (argc > 0 && argv[0]) ? argv[0] : "calx";
 
   if (opt.help) {
     print_usage(std::cout, prog);

@@ -129,6 +129,15 @@ TEST_CASE("e2e type errors") {
   CHECK(run_code("print(2i < 3i);") == ErrorCode::InvalidOperation);
 }
 
+TEST_CASE("unary plus requires numeric operand") {
+  CHECK(run_ok("print(+3);") == "3\n");
+  CHECK(run_ok("print(+(-1/2));") == "-1/2\n");
+  CHECK(run_ok("print(+2.5);") == "2.5\n");
+  CHECK(run_code("print(+true);") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(+[1]);") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(+{a: 1});") == ErrorCode::InvalidOperation);
+}
+
 TEST_CASE("boolean keywords vs identifiers") {
   CHECK(run_ok("print(true);") == "true\n");
   CHECK(run_ok("print(false);") == "false\n");

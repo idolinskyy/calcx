@@ -4,8 +4,11 @@
 #include "calc/engine.hpp"
 #include "calc/lexer.hpp"
 #include "calc/parser.hpp"
+#include "calc/value.hpp"
 
 #include <doctest/doctest.h>
+#include <limits>
+#include <string>
 #include <vector>
 
 using calc::compile;
@@ -117,4 +120,30 @@ TEST_CASE("format placeholder mismatch fails at compile time") {
   auto too_many = compile_source("let x = 1; print(\"{}\", x, x);");
   REQUIRE_FALSE(too_many);
   CHECK(too_many.error().code == ErrorCode::FormatMismatch);
+}
+
+TEST_CASE("constant pool rejects index past u16") {
+  calc::Chunk chunk;
+  const auto max = std::numeric_limits<std::uint16_t>::max();
+  for (std::size_t i = 0; i <= max; ++i) {
+    auto idx = chunk.add_constant(calc::Value{calc::Integer{0}});
+    REQUIRE(idx);
+    CHECK(*idx == static_cast<std::uint16_t>(i));
+  }
+  CHECK_FALSE(chunk.add_constant(calc::Value{calc::Integer{1}}));
+}
+
+TEST_CASE("array literal over 65535 elements is BytecodeLimit") {
+  std::string src = "print([";
+  src.reserve(src.size() + 65536 * 2);
+  for (int i = 0; i < 65536; ++i) {
+    if (i) {
+      src += ',';
+    }
+    src += '0';
+  }
+  src += "]);";
+  auto chunk = compile_source(src);
+  REQUIRE_FALSE(chunk);
+  CHECK(chunk.error().code == ErrorCode::BytecodeLimit);
 }

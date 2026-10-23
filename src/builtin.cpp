@@ -120,6 +120,9 @@ constexpr BuiltinEntry kBuiltins[] = {
   }
   if (is_rational(a)) {
     auto r = std::get<Rational>(a);
+    if (r.num == std::numeric_limits<Integer>::min()) {
+      return std::unexpected(ErrorCode::IntegerOverflow);
+    }
     if (r.num < 0) {
       r.num = -r.num;
     }

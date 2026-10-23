@@ -48,6 +48,10 @@ std::string error_message(ErrorCode code) {
     return "Невірна кількість аргументів";
   case ErrorCode::UnknownFunction:
     return "Невідома функція";
+  case ErrorCode::BytecodeLimit:
+    return "Перевищено ліміт байткоду";
+  case ErrorCode::StackOverflow:
+    return "Перевищено ліміт стека";
   }
   return "Невідома помилка";
 }

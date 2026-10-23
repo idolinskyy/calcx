@@ -31,9 +31,10 @@ TEST_CASE("dump shows locals, constants and instruction names") {
   CHECK(text.find("Halt") != std::string::npos);
   // Числові значення опкодів і легенда.
   CHECK(text.find("1=LoadConst") != std::string::npos);
-  CHECK(text.find("5=Add") != std::string::npos);
+  CHECK(text.find("5=Pos") != std::string::npos);
+  CHECK(text.find("6=Add") != std::string::npos);
   CHECK(text.find(" 1  LoadConst") != std::string::npos);
-  CHECK(text.find(" 5  Add") != std::string::npos);
+  CHECK(text.find(" 6  Add") != std::string::npos);
 }
 
 TEST_CASE("dump shows format pool for print fmt") {

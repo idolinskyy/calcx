@@ -85,6 +85,7 @@ using ArithResult = std::expected<Value, ErrorCode>;
 [[nodiscard]] std::string_view value_type_name(const Value& v);
 
 [[nodiscard]] ArithResult negate(const Value& v);
+[[nodiscard]] ArithResult posit(const Value& v); ///< унарний +: лише числові типи
 [[nodiscard]] ArithResult add(const Value& a, const Value& b);
 [[nodiscard]] ArithResult sub(const Value& a, const Value& b);
 [[nodiscard]] ArithResult mul(const Value& a, const Value& b);

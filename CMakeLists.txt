@@ -61,7 +61,8 @@ endif()
 
 add_executable(calc_cli src/main.cpp src/repl.cpp)
 target_link_libraries(calc_cli PRIVATE calc replxx::replxx)
-set_target_properties(calc_cli PROPERTIES OUTPUT_NAME calc)
+# Імʼя calx, щоб не конфліктувати з пакетом Debian/Ubuntu `calc`.
+set_target_properties(calc_cli PROPERTIES OUTPUT_NAME calx)
 target_compile_options(calc_cli PRIVATE -Wall -Wextra -Wpedantic)
 
 include(GNUInstallDirs)
@@ -89,9 +90,12 @@ add_executable(calc_tests
   tests/test_loops.cpp
   tests/test_functions.cpp
   tests/test_collections.cpp
+  tests/test_vm.cpp
+  tests/test_repl.cpp
   tests/test_e2e.cpp
+  src/repl.cpp
 )
-target_link_libraries(calc_tests PRIVATE calc doctest::doctest)
+target_link_libraries(calc_tests PRIVATE calc doctest::doctest replxx::replxx)
 target_compile_options(calc_tests PRIVATE
   -Wall -Wextra -Wpedantic
   -fsanitize=address,undefined

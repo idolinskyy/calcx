@@ -56,8 +56,10 @@ void report(const Diagnostic &d) {
 }
 
 void print_repl_help() {
-  std::cout << "Інтерактивний calc. Рядки накопичуються в сесію (змінні/fun "
+  std::cout << "Інтерактивний calx. Рядки накопичуються в сесію (змінні/fun "
                "лишаються).\n"
+            << "Незакриті { ( [ — продовження на наступному рядку (підказка "
+               "...>).\n"
             << "  ↑/↓     — історія команд\n"
             << "  Tab     — доповнення ключових слів / builtins\n"
             << "  Ctrl+A / Ctrl+E — початок / кінець рядка\n"
@@ -66,9 +68,12 @@ void print_repl_help() {
             << "  Ctrl+D  — вийти (на порожньому рядку)\n"
             << "Команди: :help  :clear  :quit\n"
             << "Приклади:\n"
-            << "  let x = 2 + 2;\n"
-            << "  print(x);\n"
-            << "  print(\"{:.4f}\", pi);\n";
+            << "  let x = 2 + 2\n"
+            << "  print(x)\n"
+            << "  fun add(a, b) {\n"
+            << "    return a + b;\n"
+            << "  }\n"
+            << "  print(add(2, 3))\n";
 }
 
 [[nodiscard]] std::string history_path() {
@@ -78,15 +83,90 @@ void print_repl_help() {
   return ".calc_history";
 }
 
-/// Додає ';' якщо рядок схожий на вираз без завершальної крапки з комою.
+[[nodiscard]] bool source_complete(std::string_view src) {
+  int brace = 0;
+  int paren = 0;
+  int bracket = 0;
+  bool in_string = false;
+  bool escape = false;
+  for (char c : src) {
+    if (in_string) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c == '\\') {
+        escape = true;
+        continue;
+      }
+      if (c == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (c == '"') {
+      in_string = true;
+      continue;
+    }
+    switch (c) {
+    case '{':
+      ++brace;
+      break;
+    case '}':
+      --brace;
+      break;
+    case '(':
+      ++paren;
+      break;
+    case ')':
+      --paren;
+      break;
+    case '[':
+      ++bracket;
+      break;
+    case ']':
+      --bracket;
+      break;
+    default:
+      break;
+    }
+    if (brace < 0 || paren < 0 || bracket < 0) {
+      return true; // зайва закриваюча — хай парсер повідомить
+    }
+  }
+  return brace == 0 && paren == 0 && bracket == 0 && !in_string;
+}
+
+/// Блок-оператор (fun/if/while/for/{...}), після якого `;` не потрібна.
+[[nodiscard]] bool looks_like_block_stmt(std::string_view t) {
+  if (t.empty()) {
+    return false;
+  }
+  if (t.front() == '{') {
+    return true;
+  }
+  std::size_t i = 0;
+  while (i < t.size() &&
+         (std::isalnum(static_cast<unsigned char>(t[i])) || t[i] == '_')) {
+    ++i;
+  }
+  const auto kw = t.substr(0, i);
+  return kw == "fun" || kw == "if" || kw == "while" || kw == "for";
+}
+
+/// Додає ';' якщо фрагмент схожий на вираз без завершальної крапки з комою.
 [[nodiscard]] std::string ensure_stmt(std::string_view line) {
   const auto t = trim(line);
   if (t.empty()) {
     return {};
   }
   const char last = t.back();
-  if (last == ';' || last == '}' || last == '{' || last == '(' || last == '[' ||
-      last == ',') {
+  if (last == ';') {
+    return std::string(t) + "\n";
+  }
+  // fun/if/while/for/{...} закінчуються на } без `;`.
+  // Але `let p = {x: 1}` — теж `}`, і `;` потрібна.
+  if (last == '}' && looks_like_block_stmt(t)) {
     return std::string(t) + "\n";
   }
   return std::string(t) + ";\n";
@@ -395,13 +475,16 @@ int run_repl() {
   const auto hist = history_path();
   rx.history_load(hist);
 
-  std::cout << "calc (інтерактивно). :help — довідка, :quit — вихід.\n";
+  std::cout << "calx (інтерактивно). :help — довідка, :quit — вихід.\n";
 
   std::string session;
   std::string prev_output;
+  std::string pending; ///< незавершений багаторядковий ввід
 
   while (true) {
-    const char *raw = rx.input("\x1b[1;32mcalc>\x1b[0m ");
+    const char *prompt =
+        pending.empty() ? "\x1b[1;32mcalx>\x1b[0m " : "\x1b[1;32m...>\x1b[0m ";
+    const char *raw = rx.input(prompt);
     if (raw == nullptr) {
       std::cout << '\n';
       break;
@@ -423,13 +506,25 @@ int run_repl() {
     if (is_clear(cmd)) {
       session.clear();
       prev_output.clear();
+      pending.clear();
       std::cout << "(сесію очищено)\n";
       continue;
     }
 
     rx.history_add(line);
 
-    const std::string chunk = ensure_stmt(line);
+    if (pending.empty()) {
+      pending = line;
+    } else {
+      pending.push_back('\n');
+      pending += line;
+    }
+    if (!source_complete(pending)) {
+      continue;
+    }
+
+    const std::string chunk = ensure_stmt(pending);
+    pending.clear();
     if (chunk.empty()) {
       continue;
     }
@@ -456,5 +551,9 @@ int run_repl() {
   rx.history_save(hist);
   return 0;
 }
+
+bool repl_source_complete(std::string_view src) { return source_complete(src); }
+
+std::string repl_ensure_stmt(std::string_view line) { return ensure_stmt(line); }
 
 } // namespace calc
