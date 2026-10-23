@@ -28,11 +28,13 @@ add_library(calc
   src/parser.cpp
   src/compiler.cpp
   src/vm.cpp
+  src/debug.cpp
   src/engine.cpp
   src/disasm.cpp
   src/format.cpp
   src/builtin.cpp
   src/constants.cpp
+  src/repl_helpers.cpp
 )
 target_include_directories(calc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(calc PRIVATE -Wall -Wextra -Wpedantic)
@@ -68,6 +70,11 @@ target_compile_options(calc_cli PRIVATE -Wall -Wextra -Wpedantic)
 include(GNUInstallDirs)
 install(TARGETS calc_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+option(CALX_BUILD_IDE "Build calx-ide (Qt 6.12 Widgets)" OFF)
+if(CALX_BUILD_IDE)
+  add_subdirectory(ide)
+endif()
+
 FetchContent_Declare(
   doctest
   GIT_REPOSITORY https://github.com/doctest/doctest.git
@@ -91,6 +98,7 @@ add_executable(calc_tests
   tests/test_functions.cpp
   tests/test_collections.cpp
   tests/test_vm.cpp
+  tests/test_debug.cpp
   tests/test_repl.cpp
   tests/test_e2e.cpp
   src/repl.cpp

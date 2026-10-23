@@ -13,13 +13,7 @@
 namespace calc {
 namespace {
 
-/// Глибина кадрів Call (включно з головним кадром).
 constexpr std::size_t kMaxCallDepth = 10'000;
-
-struct Frame {
-  std::size_t return_ip{0};
-  std::vector<Value> locals;
-};
 
 [[nodiscard]] std::uint16_t read_u16_unchecked(const std::vector<std::uint8_t> &code,
                                                std::size_t &ip) {
@@ -30,44 +24,50 @@ struct Frame {
 
 } // namespace
 
-ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
-  std::vector<Frame> frames;
-  frames.push_back(Frame{0, std::vector<Value>(chunk.local_count)});
-  std::vector<Value> stack;
-  std::size_t ip = 0;
+void vm_reset(VmState &st, const Chunk &chunk) {
+  st.frames.clear();
+  st.frames.push_back(VmFrame{0, std::vector<Value>(chunk.local_count)});
+  st.stack.clear();
+  st.ip = 0;
+}
 
-  auto runtime_error = [&](ErrorCode code,
-                           std::string message) -> ExecStateResult {
+std::expected<VmStepStatus, Diagnostic>
+vm_step(VmState &st, const Chunk &chunk, std::ostream &out) {
+  auto fail = [&](ErrorCode code, std::string message)
+      -> std::expected<VmStepStatus, Diagnostic> {
     return std::unexpected(Diagnostic{code, {}, std::move(message)});
   };
 
   auto need_stack = [&](std::size_t n) -> bool {
-    return stack.size() >= n;
+    return st.stack.size() >= n;
   };
 
   auto read_u16 = [&]() -> std::expected<std::uint16_t, Diagnostic> {
-    if (ip + 1 >= chunk.code.size()) {
+    if (st.ip + 1 >= chunk.code.size()) {
       return std::unexpected(
           Diagnostic{ErrorCode::UnexpectedToken, {},
                      "Обрізаний операнд інструкції"});
     }
-    return read_u16_unchecked(chunk.code, ip);
+    return read_u16_unchecked(chunk.code, st.ip);
   };
 
   auto read_u8 = [&]() -> std::expected<std::uint8_t, Diagnostic> {
-    if (ip >= chunk.code.size()) {
+    if (st.ip >= chunk.code.size()) {
       return std::unexpected(
           Diagnostic{ErrorCode::UnexpectedToken, {},
                      "Обрізаний операнд інструкції"});
     }
-    return chunk.code[ip++];
+    return chunk.code[st.ip++];
   };
 
-  while (ip < chunk.code.size()) {
-    const auto op = static_cast<OpCode>(chunk.code[ip++]);
+  if (st.ip >= chunk.code.size()) {
+    return fail(ErrorCode::UnexpectedToken, "Код завершився без Halt");
+  }
+
+  const auto op = static_cast<OpCode>(chunk.code[st.ip++]);
     switch (op) {
     case OpCode::Halt:
-      return ExecSuccess{std::move(frames.front().locals)};
+      return VmStepStatus::Halted;
 
     case OpCode::LoadConst: {
       auto idx = read_u16();
@@ -75,10 +75,10 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(idx.error());
       }
       if (*idx >= chunk.constants.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Індекс константи поза межами");
       }
-      stack.push_back(chunk.constants[*idx]);
+      st.stack.push_back(chunk.constants[*idx]);
       break;
     }
 
@@ -87,11 +87,11 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
       if (!slot) {
         return std::unexpected(slot.error());
       }
-      if (*slot >= frames.back().locals.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+      if (*slot >= st.frames.back().locals.size()) {
+        return fail(ErrorCode::UnexpectedToken,
                              "Слот локалі поза межами");
       }
-      stack.push_back(frames.back().locals[*slot]);
+      st.stack.push_back(st.frames.back().locals[*slot]);
       break;
     }
 
@@ -101,41 +101,41 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(slot.error());
       }
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      if (*slot >= frames.back().locals.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+      if (*slot >= st.frames.back().locals.size()) {
+        return fail(ErrorCode::UnexpectedToken,
                              "Слот локалі поза межами");
       }
-      frames.back().locals[*slot] = std::move(stack.back());
-      stack.pop_back();
+      st.frames.back().locals[*slot] = std::move(st.stack.back());
+      st.stack.pop_back();
       break;
     }
 
     case OpCode::Neg: {
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto r = negate(stack.back());
+      auto r = negate(st.stack.back());
       if (!r) {
-        return runtime_error(r.error(), "Помилка унарного мінуса");
+        return fail(r.error(), "Помилка унарного мінуса");
       }
-      stack.back() = *r;
+      st.stack.back() = *r;
       break;
     }
 
     case OpCode::Pos: {
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto r = posit(stack.back());
+      auto r = posit(st.stack.back());
       if (!r) {
-        return runtime_error(r.error(), "Помилка унарного плюса");
+        return fail(r.error(), "Помилка унарного плюса");
       }
-      stack.back() = *r;
+      st.stack.back() = *r;
       break;
     }
 
@@ -146,13 +146,13 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
     case OpCode::Mod:
     case OpCode::Pow: {
       if (!need_stack(2)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto b = std::move(stack.back());
-      stack.pop_back();
-      auto a = std::move(stack.back());
-      stack.pop_back();
+      auto b = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto a = std::move(st.stack.back());
+      st.stack.pop_back();
       ArithResult r;
       const char *msg = "Помилка операції";
       switch (op) {
@@ -185,9 +185,9 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         break;
       }
       if (!r) {
-        return runtime_error(r.error(), msg);
+        return fail(r.error(), msg);
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
@@ -200,13 +200,13 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
     case OpCode::And:
     case OpCode::Or: {
       if (!need_stack(2)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto b = std::move(stack.back());
-      stack.pop_back();
-      auto a = std::move(stack.back());
-      stack.pop_back();
+      auto b = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto a = std::move(st.stack.back());
+      st.stack.pop_back();
       ArithResult r;
       switch (op) {
       case OpCode::Eq:
@@ -238,33 +238,33 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         break;
       }
       if (!r) {
-        return runtime_error(r.error(), "Помилка операції");
+        return fail(r.error(), "Помилка операції");
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
     case OpCode::Not: {
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto r = logical_not(stack.back());
+      auto r = logical_not(st.stack.back());
       if (!r) {
-        return runtime_error(r.error(), "Помилка not");
+        return fail(r.error(), "Помилка not");
       }
-      stack.back() = *r;
+      st.stack.back() = *r;
       break;
     }
 
     case OpCode::Print: {
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      print_value(out, stack.back());
+      print_value(out, st.stack.back());
       out << '\n';
-      stack.pop_back();
+      st.stack.pop_back();
       break;
     }
 
@@ -278,21 +278,21 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(arg_count.error());
       }
       if (*fmt_idx >= chunk.formats.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Індекс формату поза межами");
       }
       if (!need_stack(*arg_count)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
       std::vector<Value> args(*arg_count);
       for (int i = static_cast<int>(*arg_count) - 1; i >= 0; --i) {
-        args[static_cast<std::size_t>(i)] = std::move(stack.back());
-        stack.pop_back();
+        args[static_cast<std::size_t>(i)] = std::move(st.stack.back());
+        st.stack.pop_back();
       }
       auto text = format_print(chunk.formats[*fmt_idx], args);
       if (!text) {
-        return runtime_error(text.error(), "Помилка форматування print");
+        return fail(text.error(), "Помилка форматування print");
       }
       out << *text << '\n';
       break;
@@ -304,10 +304,10 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(target.error());
       }
       if (*target > chunk.code.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Ціль Jump поза межами коду");
       }
-      ip = *target;
+      st.ip = *target;
       break;
     }
 
@@ -317,21 +317,21 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(target.error());
       }
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
       if (*target > chunk.code.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Ціль JumpIfFalse поза межами коду");
       }
-      auto cond = std::move(stack.back());
-      stack.pop_back();
+      auto cond = std::move(st.stack.back());
+      st.stack.pop_back();
       if (!is_boolean(cond)) {
-        return runtime_error(ErrorCode::InvalidOperation,
+        return fail(ErrorCode::InvalidOperation,
                              "Умова має бути Boolean");
       }
       if (!std::get<Boolean>(cond)) {
-        ip = *target;
+        st.ip = *target;
       }
       break;
     }
@@ -346,56 +346,56 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(argc.error());
       }
       if (*func_idx >= chunk.functions.size()) {
-        return runtime_error(ErrorCode::UnknownFunction, "Невірна функція");
+        return fail(ErrorCode::UnknownFunction, "Невірна функція");
       }
       const auto &proto = chunk.functions[*func_idx];
       if (*argc != proto.arity) {
-        return runtime_error(ErrorCode::ArityMismatch,
+        return fail(ErrorCode::ArityMismatch,
                              "Невірна кількість аргументів");
       }
       if (proto.local_count < proto.arity) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "local_count менший за arity");
       }
       if (proto.entry > chunk.code.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "entry функції поза межами коду");
       }
       if (!need_stack(*argc)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      if (frames.size() >= kMaxCallDepth) {
-        return runtime_error(ErrorCode::StackOverflow,
+      if (st.frames.size() >= kMaxCallDepth) {
+        return fail(ErrorCode::StackOverflow,
                              "Перевищено ліміт глибини викликів");
       }
-      Frame frame;
-      frame.return_ip = ip;
+      VmFrame frame;
+      frame.return_ip = st.ip;
       frame.locals.resize(proto.local_count);
       for (int i = static_cast<int>(*argc) - 1; i >= 0; --i) {
-        frame.locals[static_cast<std::size_t>(i)] = std::move(stack.back());
-        stack.pop_back();
+        frame.locals[static_cast<std::size_t>(i)] = std::move(st.stack.back());
+        st.stack.pop_back();
       }
-      frames.push_back(std::move(frame));
-      ip = proto.entry;
+      st.frames.push_back(std::move(frame));
+      st.ip = proto.entry;
       break;
     }
 
     case OpCode::Return: {
-      if (frames.size() <= 1) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+      if (st.frames.size() <= 1) {
+        return fail(ErrorCode::UnexpectedToken,
                              "return поза функцією");
       }
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto value = std::move(stack.back());
-      stack.pop_back();
-      const auto return_ip = frames.back().return_ip;
-      frames.pop_back();
-      ip = return_ip;
-      stack.push_back(std::move(value));
+      auto value = std::move(st.stack.back());
+      st.stack.pop_back();
+      const auto return_ip = st.frames.back().return_ip;
+      st.frames.pop_back();
+      st.ip = return_ip;
+      st.stack.push_back(std::move(value));
       break;
     }
 
@@ -409,20 +409,20 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(argc.error());
       }
       if (!need_stack(*argc)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
       const auto bid = static_cast<BuiltinId>(*bid_raw);
       std::vector<Value> args(*argc);
       for (int i = static_cast<int>(*argc) - 1; i >= 0; --i) {
-        args[static_cast<std::size_t>(i)] = std::move(stack.back());
-        stack.pop_back();
+        args[static_cast<std::size_t>(i)] = std::move(st.stack.back());
+        st.stack.pop_back();
       }
       auto r = call_builtin(bid, args);
       if (!r) {
-        return runtime_error(r.error(), "Помилка builtin");
+        return fail(r.error(), "Помилка builtin");
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
@@ -432,15 +432,15 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(count.error());
       }
       if (!need_stack(*count)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
       std::vector<Value> items(*count);
       for (int i = static_cast<int>(*count) - 1; i >= 0; --i) {
-        items[static_cast<std::size_t>(i)] = std::move(stack.back());
-        stack.pop_back();
+        items[static_cast<std::size_t>(i)] = std::move(st.stack.back());
+        st.stack.pop_back();
       }
-      stack.push_back(Value{make_array(std::move(items))});
+      st.stack.push_back(Value{make_array(std::move(items))});
       break;
     }
 
@@ -458,53 +458,53 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         name_idxs[i] = *ni;
       }
       if (!need_stack(*count)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
       std::map<std::string, Value> fields;
       for (int i = static_cast<int>(*count) - 1; i >= 0; --i) {
         const auto ni = name_idxs[static_cast<std::size_t>(i)];
         if (ni >= chunk.names.size()) {
-          return runtime_error(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
+          return fail(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
         }
-        fields[chunk.names[ni]] = std::move(stack.back());
-        stack.pop_back();
+        fields[chunk.names[ni]] = std::move(st.stack.back());
+        st.stack.pop_back();
       }
-      stack.push_back(Value{make_record(std::move(fields))});
+      st.stack.push_back(Value{make_record(std::move(fields))});
       break;
     }
 
     case OpCode::LoadIndex: {
       if (!need_stack(2)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto index = std::move(stack.back());
-      stack.pop_back();
-      auto arr = std::move(stack.back());
-      stack.pop_back();
+      auto index = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto arr = std::move(st.stack.back());
+      st.stack.pop_back();
       auto r = array_get(arr, index);
       if (!r) {
-        return runtime_error(r.error(), "Помилка індексації");
+        return fail(r.error(), "Помилка індексації");
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
     case OpCode::StoreIndex: {
       if (!need_stack(3)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto value = std::move(stack.back());
-      stack.pop_back();
-      auto index = std::move(stack.back());
-      stack.pop_back();
-      auto arr = std::move(stack.back());
-      stack.pop_back();
+      auto value = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto index = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto arr = std::move(st.stack.back());
+      st.stack.pop_back();
       auto r = array_set(arr, index, std::move(value));
       if (!r) {
-        return runtime_error(r.error(), "Помилка запису в масив");
+        return fail(r.error(), "Помилка запису в масив");
       }
       break;
     }
@@ -515,19 +515,19 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(ni.error());
       }
       if (*ni >= chunk.names.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
+        return fail(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
       }
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto rec = std::move(stack.back());
-      stack.pop_back();
+      auto rec = std::move(st.stack.back());
+      st.stack.pop_back();
       auto r = record_get(rec, chunk.names[*ni]);
       if (!r) {
-        return runtime_error(r.error(), "Помилка читання поля");
+        return fail(r.error(), "Помилка читання поля");
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
@@ -537,28 +537,28 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(ni.error());
       }
       if (*ni >= chunk.names.size()) {
-        return runtime_error(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
+        return fail(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
       }
       if (!need_stack(2)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto value = std::move(stack.back());
-      stack.pop_back();
-      auto rec = std::move(stack.back());
-      stack.pop_back();
+      auto value = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto rec = std::move(st.stack.back());
+      st.stack.pop_back();
       auto r = record_set(rec, chunk.names[*ni], std::move(value));
       if (!r) {
-        return runtime_error(r.error(), "Помилка запису поля");
+        return fail(r.error(), "Помилка запису поля");
       }
       break;
     }
 
     case OpCode::Pop: {
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken, "Порожній стек (Pop)");
+        return fail(ErrorCode::UnexpectedToken, "Порожній стек (Pop)");
       }
-      stack.pop_back();
+      st.stack.pop_back();
       break;
     }
 
@@ -568,25 +568,38 @@ ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
         return std::unexpected(mode.error());
       }
       if (!need_stack(1)) {
-        return runtime_error(ErrorCode::UnexpectedToken,
+        return fail(ErrorCode::UnexpectedToken,
                              "Недостатньо значень на стеку");
       }
-      auto coll = std::move(stack.back());
-      stack.pop_back();
+      auto coll = std::move(st.stack.back());
+      st.stack.pop_back();
       auto r = make_iter_items(coll, *mode);
       if (!r) {
-        return runtime_error(r.error(), "for-in очікує масив або запис");
+        return fail(r.error(), "for-in очікує масив або запис");
       }
-      stack.push_back(*r);
+      st.stack.push_back(*r);
       break;
     }
 
     default:
-      return runtime_error(ErrorCode::UnexpectedToken, "Невідомий опкод");
+      return fail(ErrorCode::UnexpectedToken, "Невідомий опкод");
+    }
+
+  return VmStepStatus::Continue;
+}
+
+ExecStateResult execute_with_locals(const Chunk &chunk, std::ostream &out) {
+  VmState st;
+  vm_reset(st, chunk);
+  while (true) {
+    auto step = vm_step(st, chunk, out);
+    if (!step) {
+      return std::unexpected(step.error());
+    }
+    if (*step == VmStepStatus::Halted) {
+      return ExecSuccess{std::move(st.frames.front().locals)};
     }
   }
-  return runtime_error(ErrorCode::UnexpectedToken,
-                       "Код завершився без Halt");
 }
 
 ExecResult execute(const Chunk &chunk, std::ostream &out) {

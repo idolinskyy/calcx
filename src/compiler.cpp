@@ -90,6 +90,8 @@ private:
     return Diagnostic{code, pos, std::move(message)};
   }
 
+  void note_line(SourcePos pos) { chunk_.set_emit_line(pos.line); }
+
   void push_scope() { scopes_.emplace_back(); }
 
   void pop_scope() { scopes_.pop_back(); }
@@ -277,6 +279,7 @@ private:
   [[nodiscard]] std::expected<void, Diagnostic> compile_stmt(const Stmt &stmt) {
     return std::visit(
         [this](const auto &s) -> std::expected<void, Diagnostic> {
+          this->note_line(s.pos);
           return this->compile_one(s);
         },
         stmt.node);
@@ -496,7 +499,7 @@ private:
     }
     const std::uint8_t mode = stmt.second.empty() ? 1 : 2;
     chunk_.emit(OpCode::MakeIter);
-    chunk_.code.push_back(mode);
+    chunk_.emit_u8_raw(mode);
 
     auto it_slot = alloc_temp("__it", stmt.pos);
     if (!it_slot) {
@@ -771,6 +774,7 @@ private:
   [[nodiscard]] std::expected<void, Diagnostic> compile_expr(const Expr &expr) {
     return std::visit(
         [this](const auto &node) -> std::expected<void, Diagnostic> {
+          this->note_line(node.pos);
           return this->compile_node(node);
         },
         expr.node);
@@ -1007,26 +1011,42 @@ CompileResult compile(const Program &program) {
   return compiler.compile(program);
 }
 
-void Chunk::emit(OpCode op) { code.push_back(static_cast<std::uint8_t>(op)); }
+void Chunk::set_emit_line(std::uint32_t line) {
+  emit_line_ = line == 0 ? 1 : line;
+}
+
+void Chunk::push_byte(std::uint8_t byte) {
+  code.push_back(byte);
+  lines.push_back(emit_line_);
+}
+
+std::uint32_t Chunk::line_at(std::size_t ip) const {
+  if (ip >= lines.size()) {
+    return 1;
+  }
+  return lines[ip];
+}
+
+void Chunk::emit(OpCode op) { push_byte(static_cast<std::uint8_t>(op)); }
 
 void Chunk::emit_u16(OpCode op, std::uint16_t operand) {
-  code.push_back(static_cast<std::uint8_t>(op));
-  code.push_back(static_cast<std::uint8_t>(operand & 0xFFu));
-  code.push_back(static_cast<std::uint8_t>((operand >> 8) & 0xFFu));
+  push_byte(static_cast<std::uint8_t>(op));
+  push_byte(static_cast<std::uint8_t>(operand & 0xFFu));
+  push_byte(static_cast<std::uint8_t>((operand >> 8) & 0xFFu));
 }
 
 void Chunk::emit_print_fmt(std::uint16_t format_index, std::uint8_t arg_count) {
-  code.push_back(static_cast<std::uint8_t>(OpCode::PrintFmt));
-  code.push_back(static_cast<std::uint8_t>(format_index & 0xFFu));
-  code.push_back(static_cast<std::uint8_t>((format_index >> 8) & 0xFFu));
-  code.push_back(arg_count);
+  push_byte(static_cast<std::uint8_t>(OpCode::PrintFmt));
+  push_byte(static_cast<std::uint8_t>(format_index & 0xFFu));
+  push_byte(static_cast<std::uint8_t>((format_index >> 8) & 0xFFu));
+  push_byte(arg_count);
 }
 
 void Chunk::emit_call(OpCode op, std::uint16_t index, std::uint8_t arg_count) {
-  code.push_back(static_cast<std::uint8_t>(op));
-  code.push_back(static_cast<std::uint8_t>(index & 0xFFu));
-  code.push_back(static_cast<std::uint8_t>((index >> 8) & 0xFFu));
-  code.push_back(arg_count);
+  push_byte(static_cast<std::uint8_t>(op));
+  push_byte(static_cast<std::uint8_t>(index & 0xFFu));
+  push_byte(static_cast<std::uint8_t>((index >> 8) & 0xFFu));
+  push_byte(arg_count);
 }
 
 std::optional<std::uint16_t> Chunk::add_constant(Value v) {
@@ -1062,9 +1082,11 @@ std::optional<std::uint16_t> Chunk::add_name(std::string name) {
 }
 
 void Chunk::emit_u16_raw(std::uint16_t operand) {
-  code.push_back(static_cast<std::uint8_t>(operand & 0xFFu));
-  code.push_back(static_cast<std::uint8_t>((operand >> 8) & 0xFFu));
+  push_byte(static_cast<std::uint8_t>(operand & 0xFFu));
+  push_byte(static_cast<std::uint8_t>((operand >> 8) & 0xFFu));
 }
+
+void Chunk::emit_u8_raw(std::uint8_t byte) { push_byte(byte); }
 
 void patch_u16(Chunk &chunk, std::size_t offset, std::uint16_t value) {
   chunk.code[offset] = static_cast<std::uint8_t>(value & 0xFFu);

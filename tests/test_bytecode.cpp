@@ -133,6 +133,23 @@ TEST_CASE("constant pool rejects index past u16") {
   CHECK_FALSE(chunk.add_constant(calc::Value{calc::Integer{1}}));
 }
 
+TEST_CASE("source map lines parallel code bytes") {
+  auto chunk = compile_source("let a = 1;\nprint(a);\n");
+  REQUIRE(chunk);
+  REQUIRE(chunk->lines.size() == chunk->code.size());
+  REQUIRE_FALSE(chunk->lines.empty());
+  // Другий рядок містить print — має зʼявитися номер 2 у maps.
+  bool saw_line2 = false;
+  for (const auto ln : chunk->lines) {
+    CHECK(ln >= 1);
+    if (ln == 2) {
+      saw_line2 = true;
+    }
+  }
+  CHECK(saw_line2);
+  CHECK(chunk->line_at(0) >= 1);
+}
+
 TEST_CASE("array literal over 65535 elements is BytecodeLimit") {
   std::string src = "print([";
   src.reserve(src.size() + 65536 * 2);

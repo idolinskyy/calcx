@@ -83,95 +83,6 @@ void print_repl_help() {
   return ".calc_history";
 }
 
-[[nodiscard]] bool source_complete(std::string_view src) {
-  int brace = 0;
-  int paren = 0;
-  int bracket = 0;
-  bool in_string = false;
-  bool escape = false;
-  for (char c : src) {
-    if (in_string) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (c == '\\') {
-        escape = true;
-        continue;
-      }
-      if (c == '"') {
-        in_string = false;
-      }
-      continue;
-    }
-    if (c == '"') {
-      in_string = true;
-      continue;
-    }
-    switch (c) {
-    case '{':
-      ++brace;
-      break;
-    case '}':
-      --brace;
-      break;
-    case '(':
-      ++paren;
-      break;
-    case ')':
-      --paren;
-      break;
-    case '[':
-      ++bracket;
-      break;
-    case ']':
-      --bracket;
-      break;
-    default:
-      break;
-    }
-    if (brace < 0 || paren < 0 || bracket < 0) {
-      return true; // зайва закриваюча — хай парсер повідомить
-    }
-  }
-  return brace == 0 && paren == 0 && bracket == 0 && !in_string;
-}
-
-/// Блок-оператор (fun/if/while/for/{...}), після якого `;` не потрібна.
-[[nodiscard]] bool looks_like_block_stmt(std::string_view t) {
-  if (t.empty()) {
-    return false;
-  }
-  if (t.front() == '{') {
-    return true;
-  }
-  std::size_t i = 0;
-  while (i < t.size() &&
-         (std::isalnum(static_cast<unsigned char>(t[i])) || t[i] == '_')) {
-    ++i;
-  }
-  const auto kw = t.substr(0, i);
-  return kw == "fun" || kw == "if" || kw == "while" || kw == "for";
-}
-
-/// Додає ';' якщо фрагмент схожий на вираз без завершальної крапки з комою.
-[[nodiscard]] std::string ensure_stmt(std::string_view line) {
-  const auto t = trim(line);
-  if (t.empty()) {
-    return {};
-  }
-  const char last = t.back();
-  if (last == ';') {
-    return std::string(t) + "\n";
-  }
-  // fun/if/while/for/{...} закінчуються на } без `;`.
-  // Але `let p = {x: 1}` — теж `}`, і `;` потрібна.
-  if (last == '}' && looks_like_block_stmt(t)) {
-    return std::string(t) + "\n";
-  }
-  return std::string(t) + ";\n";
-}
-
 /// Байтовий зсув → індекс Unicode code point (як у colors_t replxx).
 [[nodiscard]] std::size_t utf8_codepoint_index(std::string_view s,
                                                std::size_t byte_off) {
@@ -519,11 +430,11 @@ int run_repl() {
       pending.push_back('\n');
       pending += line;
     }
-    if (!source_complete(pending)) {
+    if (!repl_source_complete(pending)) {
       continue;
     }
 
-    const std::string chunk = ensure_stmt(pending);
+    const std::string chunk = repl_ensure_stmt(pending);
     pending.clear();
     if (chunk.empty()) {
       continue;
@@ -551,9 +462,5 @@ int run_repl() {
   rx.history_save(hist);
   return 0;
 }
-
-bool repl_source_complete(std::string_view src) { return source_complete(src); }
-
-std::string repl_ensure_stmt(std::string_view line) { return ensure_stmt(line); }
 
 } // namespace calc

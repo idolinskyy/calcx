@@ -24,5 +24,12 @@ Third-party software (fetched at build time; not shipped in this repository)
    License: MIT
    Copyright (c) 2016-2023 Viktor Kirilov
 
+3. Qt 6.12 (https://www.qt.io/), Components: Widgets (and dependencies
+   Core/Gui/PrintSupport as pulled by Widgets)
+   Used only by the optional calx-ide target (CALX_BUILD_IDE=ON).
+   License: LGPL-3.0 (Qt open-source edition). See Qt licensing documentation.
+   The calx-ide binary itself is GPL-3.0-or-later (links libcalc).
+
 Full license texts are in the corresponding upstream repositories under
-build/\_deps/ after CMake FetchContent runs.
+build/\_deps/ after CMake FetchContent runs (replxx, doctest), or in the
+Qt installation tree for Qt.

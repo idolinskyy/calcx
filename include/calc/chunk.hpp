@@ -60,6 +60,8 @@ struct FunctionProto {
 
 struct Chunk {
   std::vector<std::uint8_t> code;
+  /// Паралельно до code: номер рядка джерела (1-based) для кожного байта.
+  std::vector<std::uint32_t> lines;
   std::vector<Value> constants;
   std::vector<std::string> formats;
   std::vector<std::string> names; ///< імена полів записів
@@ -67,17 +69,28 @@ struct Chunk {
   std::uint16_t local_count{0}; ///< локалі головного коду (кадр 0)
   std::vector<std::string> local_names;
 
+  /// Рядок, який записується в lines при наступних emit* (1-based).
+  void set_emit_line(std::uint32_t line);
+
   void emit(OpCode op);
   void emit_u16(OpCode op, std::uint16_t operand);
   void emit_print_fmt(std::uint16_t format_index, std::uint8_t arg_count);
   /// Call / CallBuiltin: op + u16 index + u8 argc.
   void emit_call(OpCode op, std::uint16_t index, std::uint8_t arg_count);
   void emit_u16_raw(std::uint16_t operand);
+  void emit_u8_raw(std::uint8_t byte);
 
   /// Індекс у пулі або nullopt, якщо вже 65536 елементів (u16 вичерпано).
   [[nodiscard]] std::optional<std::uint16_t> add_constant(Value v);
   [[nodiscard]] std::optional<std::uint16_t> add_format(std::string fmt);
   [[nodiscard]] std::optional<std::uint16_t> add_name(std::string name);
+
+  /// Рядок джерела для адреси ip (1, якщо maps відсутні / поза межами).
+  [[nodiscard]] std::uint32_t line_at(std::size_t ip) const;
+
+private:
+  std::uint32_t emit_line_{1};
+  void push_byte(std::uint8_t byte);
 };
 
 void patch_u16(Chunk &chunk, std::size_t offset, std::uint16_t value);

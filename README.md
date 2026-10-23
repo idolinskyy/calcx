@@ -24,23 +24,54 @@ cmake --build build -j
 | `build/calc_tests` | Набір тестів                                |
 | `build/libcalc.a`  | Бібліотека (лексер, парсер, компілятор, ВМ) |
 
+### Збірка IDE (Qt 6.12)
+
+Окремий desktop-додаток **`calx-ide`** (редактор + GUI REPL + дебаг).
+Потрібен Qt 6.12 Widgets (`CMAKE_PREFIX_PATH` на ваш інсталяційний префікс).
+З опцією `CALX_BUILD_IDE=ON` у тому ж дереві збірки з’являються і
+консольний **`calx`**, і **`calx-ide`**:
+
+```bash
+cmake -S . -B build-ide -DCALX_BUILD_IDE=ON \
+  -DCMAKE_PREFIX_PATH=/home/igor/Qt/6.12.0/gcc_64 \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-ide -j
+./build-ide/calx
+./build-ide/ide/calx-ide
+```
+
+Гарячі клавіші: **F5** — продовжити / запуск, **Ctrl+R** — запуск,
+**F9** — breakpoint, **F10** / **F11** — step over / into,
+**Shift+F11** — step out. Історія інтерактиву: `~/.calx_history`.
+
 ### Встановлення
 
-У `PATH` (типово `~/.local/bin`, без root):
+У `PATH` (типово `~/.local/bin`, без root).
+
+Лише консоль (`calx`):
 
 ```bash
 cmake --install build --prefix "$HOME/.local"
 ```
 
-Після цього можна запускати просто `calx` з будь-якого каталогу.
-Переконайтесь, що `$HOME/.local/bin` є в `PATH` (у вас уже так, якщо
-`echo $PATH` його показує). Імʼя **`calx`**, а не `calc`, уникає конфлікту з
-пакетом `calc` у Debian/Ubuntu.
+Консоль **і** IDE (`calx` + `calx-ide`) — з того ж `build-ide`, де
+збирали з `CALX_BUILD_IDE=ON` (спочатку `cmake --build build-ide -j`,
+щоб були обидва таргети):
+
+```bash
+cmake --install build-ide --prefix "$HOME/.local"
+```
+
+Після цього можна запускати `calx` і `calx-ide` з будь-якого каталогу.
+Переконайтесь, що `$HOME/.local/bin` є в `PATH`. Імʼя **`calx`**, а не
+`calc`, уникає конфлікту з пакетом `calc` у Debian/Ubuntu. У встановленого
+`calx-ide` прописано RPATH до Qt, з якою його зібрали.
 
 Системно (потрібен sudo):
 
 ```bash
-sudo cmake --install build --prefix /usr/local
+sudo cmake --install build --prefix /usr/local          # лише calx
+sudo cmake --install build-ide --prefix /usr/local      # calx + calx-ide
 ```
 
 ### Запуск
