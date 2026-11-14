@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=calx IDE
+GenericName=Calculator IDE
+Comment=Editor and interactive environment for the calx language
+Exec=calx-ide %F
+Icon=calx-ide
+Terminal=false
+Categories=Development;Science;Education;Math;
+MimeType=text/x-calx;
+Keywords=calculator;calx;math;ide;
+StartupNotify=true

@@ -16,7 +16,8 @@ QStringList keywords() {
           QStringLiteral("continue"), QStringLiteral("fun"),
           QStringLiteral("return"),   QStringLiteral("true"),
           QStringLiteral("false"),    QStringLiteral("and"),
-          QStringLiteral("or"),       QStringLiteral("not")};
+          QStringLiteral("or"),       QStringLiteral("not"),
+          QStringLiteral("has")};
 }
 
 QStringList builtinNames() {
@@ -32,7 +33,15 @@ QStringList builtinNames() {
       QStringLiteral("floor"), QStringLiteral("ceil"), QStringLiteral("round"),
       QStringLiteral("trunc"), QStringLiteral("min"),  QStringLiteral("max"),
       QStringLiteral("deg"),   QStringLiteral("rad"),  QStringLiteral("len"),
-      QStringLiteral("push"),  QStringLiteral("pop")};
+      QStringLiteral("push"),  QStringLiteral("pop"),  QStringLiteral("clone"),
+      QStringLiteral("same"),  QStringLiteral("int"),  QStringLiteral("real"),
+      QStringLiteral("bool"),  QStringLiteral("complex"),
+      QStringLiteral("rational"),
+      QStringLiteral("is_bool"),     QStringLiteral("is_int"),
+      QStringLiteral("is_rational"), QStringLiteral("is_real"),
+      QStringLiteral("is_complex"),  QStringLiteral("is_number"),
+      QStringLiteral("is_array"),    QStringLiteral("is_record"),
+      QStringLiteral("is_string")};
 }
 
 QStringList constantNames() {
@@ -68,11 +77,17 @@ QStringList completionBase() {
 QString hoverTextFor(const QString &ident) {
   const auto name = ident.toStdString();
   if (const auto bid = calc::find_builtin(name)) {
-    const auto arity = calc::builtin_arity(*bid);
-    return QStringLiteral("builtin %1 (%2 аргумент%3)")
+    const auto ar = calc::builtin_arity_range(*bid);
+    if (ar.min == ar.max) {
+      return QStringLiteral("builtin %1 (%2 аргумент%3)")
+          .arg(ident)
+          .arg(ar.min)
+          .arg(ar.min == 1 ? QString() : QStringLiteral("и"));
+    }
+    return QStringLiteral("builtin %1 (%2–%3 аргументи)")
         .arg(ident)
-        .arg(arity)
-        .arg(arity == 1 ? QString() : QStringLiteral("и"));
+        .arg(ar.min)
+        .arg(ar.max);
   }
   if (const auto c = calc::find_constant(name)) {
     return QStringLiteral("константа %1 = %2")

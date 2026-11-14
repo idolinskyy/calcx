@@ -613,8 +613,28 @@ private:
   }
 
   [[nodiscard]] std::expected<ExprPtr, Diagnostic> parse_and() {
-    return parse_binary_left([this] { return parse_equality(); },
-                             {TokenKind::And});
+    return parse_binary_left([this] { return parse_has(); }, {TokenKind::And});
+  }
+
+  /// `record has field` — field лише ідентифікатор (як у `.field`).
+  [[nodiscard]] std::expected<ExprPtr, Diagnostic> parse_has() {
+    auto left = parse_equality();
+    if (!left) {
+      return left;
+    }
+    if (!match(TokenKind::Has)) {
+      return left;
+    }
+    const SourcePos pos = previous().pos;
+    auto field = consume(TokenKind::Identifier, ErrorCode::ExpectedToken,
+                         "Очікується імʼя поля після 'has'");
+    if (!field) {
+      return std::unexpected(field.error());
+    }
+    auto node = std::make_unique<Expr>();
+    node->node = HasExpr{std::move(*left), std::string(field->text), field->pos,
+                         pos};
+    return node;
   }
 
   [[nodiscard]] std::expected<ExprPtr, Diagnostic> parse_equality() {

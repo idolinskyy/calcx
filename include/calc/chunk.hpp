@@ -45,6 +45,7 @@ enum class OpCode : std::uint8_t {
   StoreIndex,  ///< pop value, pop index, pop array (мутація)
   LoadField,   ///< u16 name_index; pop record → field
   StoreField,  ///< u16 name_index; pop value, pop record
+  HasField,    ///< u16 name_index; pop record → Boolean (чи є поле)
   Pop,         ///< відкинути вершину стека (ExprStmt)
   MakeIter,    ///< u8 mode (1|2): coll → масив елементів/пар для for-in
 };

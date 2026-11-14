@@ -87,6 +87,7 @@ instruction_size(OpCode op, const std::vector<std::uint8_t> &code,
   case OpCode::MakeArray:
   case OpCode::LoadField:
   case OpCode::StoreField:
+  case OpCode::HasField:
     return 3; // op + u16
   case OpCode::PrintFmt:
   case OpCode::Call:
@@ -165,7 +166,7 @@ void dump_opcode_legend(std::ostream &out) {
       OpCode::Call,       OpCode::Return,     OpCode::CallBuiltin,
       OpCode::MakeArray,  OpCode::MakeRecord, OpCode::LoadIndex,
       OpCode::StoreIndex, OpCode::LoadField,  OpCode::StoreField,
-      OpCode::Pop,        OpCode::MakeIter,
+      OpCode::HasField,   OpCode::Pop,        OpCode::MakeIter,
   };
   constexpr std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {
@@ -255,6 +256,8 @@ std::string_view opcode_name(OpCode op) {
     return "LoadField";
   case OpCode::StoreField:
     return "StoreField";
+  case OpCode::HasField:
+    return "HasField";
   case OpCode::Pop:
     return "Pop";
   case OpCode::MakeIter:
@@ -487,7 +490,8 @@ void dump_chunk(const Chunk &chunk, std::ostream &out,
       break;
     }
     case OpCode::LoadField:
-    case OpCode::StoreField: {
+    case OpCode::StoreField:
+    case OpCode::HasField: {
       const auto ni = read_u16(chunk.code, ip);
       operands = std::format("{}", ni);
       if (ni < chunk.names.size()) {

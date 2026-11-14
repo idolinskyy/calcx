@@ -35,6 +35,7 @@ namespace {
     case OpCode::MakeArray:
     case OpCode::LoadField:
     case OpCode::StoreField:
+    case OpCode::HasField:
       i += 2;
       break;
     case OpCode::PrintFmt:

@@ -8,6 +8,7 @@
 #include <limits>
 #include <numeric>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -920,6 +921,69 @@ ArithResult record_set(Value &rec, std::string_view field, Value value) {
   }
   record_fields(std::get<Record>(rec))[std::string(field)] = std::move(value);
   return rec;
+}
+
+ArithResult record_has(const Value &rec, std::string_view field) {
+  if (!is_record(rec)) {
+    return std::unexpected(ErrorCode::InvalidOperation);
+  }
+  const auto &fields = record_fields(std::get<Record>(rec));
+  return Value{Boolean{fields.contains(std::string(field))}};
+}
+
+namespace {
+
+[[nodiscard]] Value clone_value_impl(
+    const Value &v, std::unordered_map<const void *, Value> &memo) {
+  if (is_array(v)) {
+    const Array &src = std::get<Array>(v);
+    const void *id = src.data.get();
+    if (const auto it = memo.find(id); it != memo.end()) {
+      return it->second;
+    }
+    Array dst;
+    Value holder{dst};
+    memo.emplace(id, holder);
+    auto &out_items = array_items(std::get<Array>(memo.find(id)->second));
+    out_items.reserve(array_items(src).size());
+    for (const Value &item : array_items(src)) {
+      out_items.push_back(clone_value_impl(item, memo));
+    }
+    return memo.find(id)->second;
+  }
+  if (is_record(v)) {
+    const Record &src = std::get<Record>(v);
+    const void *id = src.data.get();
+    if (const auto it = memo.find(id); it != memo.end()) {
+      return it->second;
+    }
+    Record dst;
+    Value holder{dst};
+    memo.emplace(id, holder);
+    auto &out_fields = record_fields(std::get<Record>(memo.find(id)->second));
+    for (const auto &[k, val] : record_fields(src)) {
+      out_fields.emplace(k, clone_value_impl(val, memo));
+    }
+    return memo.find(id)->second;
+  }
+  return v;
+}
+
+} // namespace
+
+Value clone_value(const Value &v) {
+  std::unordered_map<const void *, Value> memo;
+  return clone_value_impl(v, memo);
+}
+
+bool same_object(const Value &a, const Value &b) {
+  if (is_array(a) && is_array(b)) {
+    return std::get<Array>(a).data.get() == std::get<Array>(b).data.get();
+  }
+  if (is_record(a) && is_record(b)) {
+    return std::get<Record>(a).data.get() == std::get<Record>(b).data.get();
+  }
+  return false;
 }
 
 } // namespace calc

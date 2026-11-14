@@ -554,6 +554,28 @@ vm_step(VmState &st, const Chunk &chunk, std::ostream &out) {
       break;
     }
 
+    case OpCode::HasField: {
+      auto ni = read_u16();
+      if (!ni) {
+        return std::unexpected(ni.error());
+      }
+      if (*ni >= chunk.names.size()) {
+        return fail(ErrorCode::UnexpectedToken, "Невірне імʼя поля");
+      }
+      if (!need_stack(1)) {
+        return fail(ErrorCode::UnexpectedToken,
+                    "Недостатньо значень на стеку");
+      }
+      auto rec = std::move(st.stack.back());
+      st.stack.pop_back();
+      auto r = record_has(rec, chunk.names[*ni]);
+      if (!r) {
+        return fail(r.error(), "Помилка перевірки поля");
+      }
+      st.stack.push_back(*r);
+      break;
+    }
+
     case OpCode::Pop: {
       if (!need_stack(1)) {
         return fail(ErrorCode::UnexpectedToken, "Порожній стек (Pop)");

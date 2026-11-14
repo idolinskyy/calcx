@@ -107,6 +107,7 @@ void CalxHighlighter::highlightBlock(const QString &text) {
     case calc::TokenKind::And:
     case calc::TokenKind::Or:
     case calc::TokenKind::Not:
+    case calc::TokenKind::Has:
       fmt = keywordFmt_;
       break;
     case calc::TokenKind::True:

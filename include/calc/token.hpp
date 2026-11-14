@@ -35,6 +35,7 @@ enum class TokenKind {
   And,
   Or,
   Not,
+  Has, ///< record has field
   Plus,
   Minus,
   Star,

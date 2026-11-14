@@ -78,9 +78,9 @@ void print_repl_help() {
 
 [[nodiscard]] std::string history_path() {
   if (const char *home = std::getenv("HOME"); home && home[0] != '\0') {
-    return std::string(home) + "/.calc_history";
+    return std::string(home) + "/.calx_history";
   }
-  return ".calc_history";
+  return ".calx_history";
 }
 
 /// Байтовий зсув → індекс Unicode code point (як у colors_t replxx).
@@ -136,6 +136,7 @@ void paint(Replxx::colors_t &colors, std::size_t from_cp, std::size_t to_cp,
   case TokenKind::And:
   case TokenKind::Or:
   case TokenKind::Not:
+  case TokenKind::Has:
     return C::BRIGHTBLUE;
   case TokenKind::True:
   case TokenKind::False:
@@ -275,6 +276,7 @@ void highlight(std::string const &input, Replxx::colors_t &colors) {
       "and",
       "or",
       "not",
+      "has",
       // builtins
       "sin",
       "cos",
@@ -311,18 +313,56 @@ void highlight(std::string const &input, Replxx::colors_t &colors) {
       "len",
       "push",
       "pop",
-      // constants (вибірка)
+      "clone",
+      "same",
+      "int",
+      "real",
+      "bool",
+      "complex",
+      "rational",
+      "is_bool",
+      "is_int",
+      "is_rational",
+      "is_real",
+      "is_complex",
+      "is_number",
+      "is_array",
+      "is_record",
+      "is_string",
+      // constants
       "pi",
       "e",
       "tau",
       "phi",
+      "sqrt2",
+      "sqrt3",
+      "ln2",
+      "ln10",
       "i",
       "c",
+      "G",
+      "h",
+      "hbar",
+      "qe",
+      "me",
+      "mp",
+      "mn",
+      "u",
+      "eps0",
+      "mu0",
+      "alpha",
+      "sigma",
       "g",
+      "atm",
+      "Ry",
+      "a0",
       "NA",
       "kB",
+      "k",
       "R",
       "F",
+      "Vm",
+      "celsius0",
       // repl
       ":help",
       ":clear",

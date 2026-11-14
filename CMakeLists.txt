@@ -1,6 +1,6 @@
 # calx: бібліотека calc, CLI і тести (doctest).
 cmake_minimum_required(VERSION 3.28)
-project(calx LANGUAGES CXX C)
+project(calx VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,10 +70,47 @@ target_compile_options(calc_cli PRIVATE -Wall -Wextra -Wpedantic)
 include(GNUInstallDirs)
 install(TARGETS calc_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+install(FILES
+  "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+  "${CMAKE_CURRENT_SOURCE_DIR}/NOTICE"
+  "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}
+)
+
 option(CALX_BUILD_IDE "Build calx-ide (Qt 6.12 Widgets)" OFF)
+set(CALX_QT_ROOT "" CACHE PATH "Optional Qt prefix (official installer gcc_64)")
+if(CALX_QT_ROOT AND EXISTS "${CALX_QT_ROOT}")
+  list(PREPEND CMAKE_PREFIX_PATH "${CALX_QT_ROOT}")
+endif()
 if(CALX_BUILD_IDE)
   add_subdirectory(ide)
 endif()
+
+# CPack (.deb / .tar.gz) — локальне пакування через scripts/package.sh.
+set(CPACK_PACKAGE_NAME "calx")
+set(CPACK_PACKAGE_VENDOR "calx")
+set(CPACK_PACKAGE_CONTACT "Ihor Dolinskyi")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+  "Calculator language and optional Qt IDE (calx / calx-ide)")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_STRIP_FILES TRUE)
+if(UNIX AND NOT APPLE)
+  set(CPACK_GENERATOR "DEB;TGZ")
+  set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Ihor Dolinskyi")
+  set(CPACK_DEBIAN_PACKAGE_SECTION "math")
+  set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+  if(CALX_BUILD_IDE AND CALX_BUNDLE_QT)
+    # Не тягнути системний libqt6*: у пакеті свій Qt з префікса збірки.
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+      "libc6, libstdc++6, libgcc-s1, libgl1, libopengl0, libegl1, libx11-6, libx11-xcb1, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-render-util0, libxcb-shape0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb-util1, libfontconfig1, libfreetype6, libpng16-16 | libpng16-16t64, zlib1g, libglib2.0-0 | libglib2.0-0t64, libdbus-1-3, libzstd1, libssl3")
+  else()
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  endif()
+endif()
+include(CPack)
 
 FetchContent_Declare(
   doctest

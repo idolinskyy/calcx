@@ -75,6 +75,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
           &MainWindow::onDebugFinished);
   connect(debugger_, &DebugController::errored, this,
           &MainWindow::onDebugErrored);
+  connect(debugger_, &DebugController::busyChanged, this,
+          &MainWindow::onDebugBusyChanged);
 
   editor_->setPlainText(
       QStringLiteral("let x = 2 + 2;\nprint(\"x = {}\", x);\n"));
@@ -134,8 +136,9 @@ void MainWindow::createMenus() {
   runMenu->addSeparator();
   runMenu->addAction(QStringLiteral("Дебаг"), this, &MainWindow::debugStart,
                      QKeySequence(Qt::SHIFT | Qt::Key_F5));
-  runMenu->addAction(QStringLiteral("Продовжити / Запуск"), this,
-                     &MainWindow::debugContinue, QKeySequence(Qt::Key_F5));
+  actContinue_ = runMenu->addAction(QStringLiteral("Продовжити / Запуск"), this,
+                                    &MainWindow::debugContinue,
+                                    QKeySequence(Qt::Key_F5));
   runMenu->addAction(
       QStringLiteral("Точка зупину"), this,
       [this] {
@@ -145,13 +148,15 @@ void MainWindow::createMenus() {
       QKeySequence(Qt::Key_F9));
   runMenu->addAction(QStringLiteral("Пауза"), this, &MainWindow::debugPause);
   runMenu->addAction(QStringLiteral("Стоп"), this, &MainWindow::debugStop);
-  runMenu->addAction(QStringLiteral("Крок усередину"), this,
-                     &MainWindow::debugStepInto, QKeySequence(Qt::Key_F11));
-  runMenu->addAction(QStringLiteral("Крок через"), this,
-                     &MainWindow::debugStepOver, QKeySequence(Qt::Key_F10));
-  runMenu->addAction(QStringLiteral("Крок назовні"), this,
-                     &MainWindow::debugStepOut,
-                     QKeySequence(Qt::SHIFT | Qt::Key_F11));
+  actStepInto_ = runMenu->addAction(QStringLiteral("Крок усередину"), this,
+                                    &MainWindow::debugStepInto,
+                                    QKeySequence(Qt::Key_F11));
+  actStepOver_ = runMenu->addAction(QStringLiteral("Крок через"), this,
+                                    &MainWindow::debugStepOver,
+                                    QKeySequence(Qt::Key_F10));
+  actStepOut_ = runMenu->addAction(QStringLiteral("Крок назовні"), this,
+                                   &MainWindow::debugStepOut,
+                                   QKeySequence(Qt::SHIFT | Qt::Key_F11));
 
   auto *viewMenu = menuBar()->addMenu(QStringLiteral("&Вигляд"));
   viewMenu->addAction(QStringLiteral("Редактор"), this,
@@ -184,11 +189,19 @@ void MainWindow::createToolbars() {
   tb->setObjectName(QStringLiteral("MainToolbar"));
   tb->addAction(QStringLiteral("▶ Запуск"), this, &MainWindow::runProgram);
   tb->addAction(QStringLiteral("🐞 Дебаг"), this, &MainWindow::debugStart);
-  tb->addAction(QStringLiteral("▶▶"), this, &MainWindow::debugContinue);
+  if (actContinue_) {
+    tb->addAction(actContinue_);
+  } else {
+    tb->addAction(QStringLiteral("▶▶"), this, &MainWindow::debugContinue);
+  }
   tb->addAction(QStringLiteral("⏸"), this, &MainWindow::debugPause);
   tb->addAction(QStringLiteral("⏹"), this, &MainWindow::debugStop);
-  tb->addAction(QStringLiteral("F11"), this, &MainWindow::debugStepInto);
-  tb->addAction(QStringLiteral("F10"), this, &MainWindow::debugStepOver);
+  if (actStepInto_) {
+    tb->addAction(actStepInto_);
+  }
+  if (actStepOver_) {
+    tb->addAction(actStepOver_);
+  }
   tb->addSeparator();
   tb->addAction(QStringLiteral("Редактор"), this,
                 &MainWindow::switchEditorMode);
@@ -370,8 +383,10 @@ void MainWindow::toggleTheme() {
 }
 
 void MainWindow::openHelp() {
-  HelpDialog dialog(this);
-  dialog.exec();
+  if (!help_) {
+    help_ = new HelpDialog(this);
+  }
+  help_->openSection(QStringLiteral("overview"));
 }
 
 void MainWindow::openAbout() {
@@ -512,6 +527,8 @@ void MainWindow::runProgram() {
   auto ran = calc::execute_with_locals(*compiled, captured);
   if (!ran) {
     const auto &d = ran.error();
+    editor_->setDiagnosticUnderline(static_cast<int>(d.pos.line),
+                                    static_cast<int>(d.pos.column), 1);
     console_->appendError(
         QStringLiteral("помилка:%1:%2: %3")
             .arg(d.pos.line)
@@ -629,12 +646,53 @@ void MainWindow::onDebugFinished(const QString &outputDelta) {
   statusBar()->showMessage(QStringLiteral("Дебаг завершено"), 3000);
 }
 
+void MainWindow::onDebugBusyChanged(bool busy) {
+  const bool enable = !busy;
+  if (actContinue_) {
+    actContinue_->setEnabled(enable);
+  }
+  if (actStepInto_) {
+    actStepInto_->setEnabled(enable);
+  }
+  if (actStepOver_) {
+    actStepOver_->setEnabled(enable);
+  }
+  if (actStepOut_) {
+    actStepOut_->setEnabled(enable);
+  }
+}
+
+void MainWindow::setDiagnosticFromMessage(const QString &message) {
+  // "помилка:LINE:COL: …"
+  const QString prefix = QStringLiteral("помилка:");
+  if (!message.startsWith(prefix)) {
+    return;
+  }
+  const QString rest = message.mid(prefix.size());
+  const auto colon1 = rest.indexOf(QLatin1Char(':'));
+  if (colon1 <= 0) {
+    return;
+  }
+  const auto colon2 = rest.indexOf(QLatin1Char(':'), colon1 + 1);
+  if (colon2 <= colon1) {
+    return;
+  }
+  bool ok_line = false;
+  bool ok_col = false;
+  const int line = rest.left(colon1).toInt(&ok_line);
+  const int col = rest.mid(colon1 + 1, colon2 - colon1 - 1).toInt(&ok_col);
+  if (ok_line && ok_col && line > 0) {
+    editor_->setDiagnosticUnderline(line, col > 0 ? col : 1, 1);
+  }
+}
+
 void MainWindow::onDebugErrored(const QString &message,
                                 const QString &outputDelta) {
   if (!outputDelta.isEmpty()) {
     console_->appendText(outputDelta);
   }
   console_->appendError(message);
+  setDiagnosticFromMessage(message);
   editor_->setCurrentDebugLine(0);
   debugging_ = false;
   statusBar()->showMessage(QStringLiteral("Помилка дебагу"), 5000);

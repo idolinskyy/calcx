@@ -322,6 +322,9 @@ void skip_whitespace_and_comments(Cursor &cur) {
   if (text == "not") {
     return TokenKind::Not;
   }
+  if (text == "has") {
+    return TokenKind::Has;
+  }
   return TokenKind::Identifier;
 }
 

@@ -195,3 +195,87 @@ TEST_CASE("block vs record in statement vs expression") {
 }
 )") == "1\n");
 }
+
+TEST_CASE("has checks record field presence") {
+  CHECK(run_ok(R"(
+let p = {x: 1};
+print(p has x);
+print(p has y);
+p.y = 2;
+print(p has y);
+if (p has x and not (p has z)) {
+  print(p.x);
+}
+)") == "true\nfalse\ntrue\n1\n");
+}
+
+TEST_CASE("has on non-record is error") {
+  CHECK(run_code("print([1] has x);") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(1 has x);") == ErrorCode::InvalidOperation);
+}
+
+TEST_CASE("has requires field identifier") {
+  CHECK(run_code("let p = {x: 1}; print(p has);") == ErrorCode::ExpectedToken);
+}
+
+TEST_CASE("clone deep-copies array and breaks sharing") {
+  CHECK(run_ok(R"(
+let a = [1, 2, 3];
+let b = clone(a);
+b[0] = 9;
+print(a[0]);
+print(b[0]);
+print(a == b);
+print(same(a, b));
+)") == "1\n9\nfalse\nfalse\n");
+}
+
+TEST_CASE("clone deep-copies nested array and record") {
+  CHECK(run_ok(R"(
+let r = { pts: [{x: 1}, {x: 2}] };
+let c = clone(r);
+c.pts[0].x = 9;
+print(r.pts[0].x);
+print(c.pts[0].x);
+print(same(r, c));
+print(same(r.pts, c.pts));
+)") == "1\n9\nfalse\nfalse\n");
+}
+
+TEST_CASE("same detects shared array and record identity") {
+  CHECK(run_ok(R"(
+let a = [1, 2];
+let b = a;
+let c = [1, 2];
+print(same(a, b));
+print(same(a, c));
+print(a == c);
+let p = {x: 1};
+let q = p;
+let s = {x: 1};
+print(same(p, q));
+print(same(p, s));
+print(p == s);
+)") == "true\nfalse\ntrue\ntrue\nfalse\ntrue\n");
+}
+
+TEST_CASE("clone handles cyclic array") {
+  CHECK(run_ok(R"(
+let a = [1];
+a[0] = a;
+let b = clone(a);
+print(same(a, b));
+print(same(a, a[0]));
+print(same(b, b[0]));
+b[0] = 7;
+print(a[0]);
+print(b[0]);
+)") == "false\ntrue\ntrue\n[...]\n7\n");
+}
+
+TEST_CASE("clone on scalar returns same value; same on non-collections is false") {
+  CHECK(run_ok("print(clone(42));") == "42\n");
+  CHECK(run_ok("print(clone(true));") == "true\n");
+  CHECK(run_ok("print(same(1, 1));") == "false\n");
+  CHECK(run_ok("print(same([1], {x: 1}));") == "false\n");
+}

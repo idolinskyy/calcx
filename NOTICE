@@ -29,7 +29,11 @@ Third-party software (fetched at build time; not shipped in this repository)
    Used only by the optional calx-ide target (CALX_BUILD_IDE=ON).
    License: LGPL-3.0 (Qt open-source edition). See Qt licensing documentation.
    The calx-ide binary itself is GPL-3.0-or-later (links libcalc).
+   Release packages built with scripts/package.sh may bundle Qt shared
+   libraries and plugins under lib/*/calx-ide (from the official Qt
+   installer prefix used at build time). System packages that link against
+   distro Qt do not include that bundle.
 
 Full license texts are in the corresponding upstream repositories under
-build/\_deps/ after CMake FetchContent runs (replxx, doctest), or in the
-Qt installation tree for Qt.
+build/_deps/ after CMake FetchContent runs (replxx, doctest), or in the
+Qt installation tree / bundled lib/*/calx-ide for Qt.

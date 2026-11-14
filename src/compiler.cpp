@@ -883,6 +883,20 @@ private:
   }
 
   [[nodiscard]] std::expected<void, Diagnostic>
+  compile_node(const HasExpr &has) {
+    auto obj = compile_expr(*has.object);
+    if (!obj) {
+      return std::unexpected(obj.error());
+    }
+    auto ni = add_field_name(has.field, has.field_pos);
+    if (!ni) {
+      return std::unexpected(ni.error());
+    }
+    chunk_.emit_u16(OpCode::HasField, *ni);
+    return {};
+  }
+
+  [[nodiscard]] std::expected<void, Diagnostic>
   compile_node(const CallExpr &call) {
     if (call.args.size() > kMaxArgCount) {
       return std::unexpected(error(ErrorCode::ArityMismatch, call.callee_pos,
@@ -897,7 +911,7 @@ private:
     const auto argc = static_cast<std::uint8_t>(call.args.size());
 
     if (const auto bid = find_builtin(call.callee)) {
-      if (argc != builtin_arity(*bid)) {
+      if (!builtin_arity_ok(*bid, argc)) {
         return std::unexpected(error(ErrorCode::ArityMismatch, call.callee_pos,
                                      "Невірна кількість аргументів builtin"));
       }

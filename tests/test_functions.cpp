@@ -213,6 +213,89 @@ TEST_CASE("builtin arity and type errors") {
   CHECK(run_code("print(floor(1 + 2i));") == ErrorCode::InvalidOperation);
 }
 
+TEST_CASE("cast builtins int real bool complex rational") {
+  CHECK(run_ok("print(int(3.9));") == "3\n");
+  CHECK(run_ok("print(int(-3.9));") == "-3\n");
+  CHECK(run_ok("print(int(4));") == "4\n");
+  CHECK(run_ok("print(int(4/1));") == "4\n");
+  CHECK(run_ok("print(real(1/2));") == "0.5\n");
+  CHECK(run_ok("print(real(2));") == "2.0\n");
+  CHECK(run_ok("print(bool(0));") == "false\n");
+  CHECK(run_ok("print(bool(2));") == "true\n");
+  CHECK(run_ok("print(bool(0.0));") == "false\n");
+  CHECK(run_ok("print(bool(true));") == "true\n");
+  CHECK(run_ok("print(bool(1/2));") == "true\n");
+  CHECK(run_ok("print(bool(0/1));") == "false\n");
+  CHECK(run_ok("print(complex(2));") == "2 + 0i\n");
+  CHECK(run_ok("print(complex(2, 3));") == "2 + 3i\n");
+  CHECK(run_ok("print(rational(1, 4));") == "1/4\n");
+  CHECK(run_ok("print(int(floor(3.7)));") == "3\n");
+
+  CHECK(run_code("print(int(1/2));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(int(1 + 2i));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(int(true));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(real(1 + 2i));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(bool(1 + 2i));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(bool([1]));") == ErrorCode::InvalidOperation);
+  CHECK(run_code("print(complex(1, 2, 3));") == ErrorCode::ArityMismatch);
+  CHECK(run_code("print(complex());") == ErrorCode::ArityMismatch);
+  CHECK(run_code("print(rational(1));") == ErrorCode::ArityMismatch);
+  CHECK(run_code("print(rational(1.0, 2));") == ErrorCode::InvalidOperation);
+
+  CHECK(run_ok(R"(
+let n = 2;
+if (bool(n)) {
+  print("так");
+}
+)") == "так\n");
+}
+
+TEST_CASE("type predicates is_*") {
+  CHECK(run_ok("print(is_bool(true));") == "true\n");
+  CHECK(run_ok("print(is_bool(1));") == "false\n");
+  CHECK(run_ok("print(is_int(42));") == "true\n");
+  CHECK(run_ok("print(is_int(1/2));") == "false\n");
+  CHECK(run_ok("print(is_rational(1/2));") == "true\n");
+  CHECK(run_ok("print(is_rational(2));") == "false\n");
+  CHECK(run_ok("print(is_real(2.5));") == "true\n");
+  CHECK(run_ok("print(is_real(2));") == "false\n");
+  CHECK(run_ok("print(is_complex(1 + 2i));") == "true\n");
+  CHECK(run_ok("print(is_complex(1));") == "false\n");
+  CHECK(run_ok("print(is_number(1));") == "true\n");
+  CHECK(run_ok("print(is_number(1/2));") == "true\n");
+  CHECK(run_ok("print(is_number(2.0));") == "true\n");
+  CHECK(run_ok("print(is_number(1i));") == "true\n");
+  CHECK(run_ok("print(is_number(true));") == "false\n");
+  CHECK(run_ok("print(is_number([]));") == "false\n");
+  CHECK(run_ok("print(is_array([1, true]));") == "true\n");
+  CHECK(run_ok("print(is_array({x: 1}));") == "false\n");
+  CHECK(run_ok("print(is_record({x: 1}));") == "true\n");
+  CHECK(run_ok("print(is_record([]));") == "false\n");
+
+  CHECK(run_ok(R"(
+let mixed = [1, true, 1/2, {x: 1}, [9]];
+for (v in mixed) {
+  if (is_int(v)) { print("i"); }
+  if (is_bool(v)) { print("b"); }
+  if (is_rational(v)) { print("q"); }
+  if (is_record(v)) { print("r"); }
+  if (is_array(v)) { print("a"); }
+}
+)") == "i\nb\nq\nr\na\n");
+
+  CHECK(run_ok(R"(
+let p = {a: 1, b: true};
+for (k, v in p) {
+  print(is_string(k));
+  if (is_int(v)) { print(v); }
+  if (is_bool(v)) { print(v); }
+}
+)") == "true\n1\ntrue\ntrue\n");
+
+  CHECK(run_code("print(is_int());") == ErrorCode::ArityMismatch);
+  CHECK(run_code("print(is_int(1, 2));") == ErrorCode::ArityMismatch);
+}
+
 TEST_CASE("user function cannot shadow builtin name") {
   CHECK(run_code("fun sin(x) { return x; } print(sin(1));") ==
         ErrorCode::RedeclaredVariable);

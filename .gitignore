@@ -1,5 +1,7 @@
 /build/
 /build-ide/
+/build-package/
+/dist/
 /cmake-build-*/
 compile_commands.json
 *.o

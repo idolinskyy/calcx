@@ -109,6 +109,16 @@ using ArithResult = std::expected<Value, ErrorCode>;
 [[nodiscard]] ArithResult record_get(const Value& rec, std::string_view field);
 [[nodiscard]] ArithResult record_set(Value& rec, std::string_view field,
                                      Value value);
+/// Чи запис містить поле; не-запис → InvalidOperation.
+[[nodiscard]] ArithResult record_has(const Value& rec, std::string_view field);
+
+/// Глибока копія: масиви/записи — нові обʼєкти (з урахуванням циклів);
+/// інші типи — як є.
+[[nodiscard]] Value clone_value(const Value& v);
+
+/// Чи два значення — той самий масив/запис у памʼяті (shared_ptr).
+/// Для інших типів або змішаної пари Array/Record — false.
+[[nodiscard]] bool same_object(const Value& a, const Value& b);
 
 [[nodiscard]] std::string format_value(const Value& v);
 void print_value(std::ostream& os, const Value& v);

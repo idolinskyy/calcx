@@ -78,9 +78,17 @@ struct FieldExpr {
   SourcePos pos;
 };
 
+/// Перевірка наявності поля: `record has field`.
+struct HasExpr {
+  ExprPtr object;
+  std::string field;
+  SourcePos field_pos;
+  SourcePos pos;
+};
+
 struct Expr {
   std::variant<LiteralExpr, VarExpr, UnaryExpr, BinaryExpr, CallExpr, ArrayExpr,
-               RecordExpr, IndexExpr, FieldExpr>
+               RecordExpr, IndexExpr, FieldExpr, HasExpr>
       node;
 };
 

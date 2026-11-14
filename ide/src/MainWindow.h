@@ -12,8 +12,10 @@ class FunsDock;
 class ConstsDock;
 class DisasmDock;
 class DebugController;
+class HelpDialog;
 class QStackedWidget;
 class QLabel;
+class QAction;
 class QCloseEvent;
 
 class MainWindow final : public QMainWindow {
@@ -54,6 +56,7 @@ private slots:
                      const QStringList &localTypes, const QString &disasm);
   void onReplSessionUpdated(const QString &source, const QString &delta);
   void onBreakpointsChanged();
+  void onDebugBusyChanged(bool busy);
   void updateWindowTitle();
 
 private:
@@ -65,6 +68,7 @@ private:
   void setCurrentFile(const QString &path);
   void applyTheme(bool dark);
   [[nodiscard]] bool formatBeforeSave();
+  void setDiagnosticFromMessage(const QString &message);
 
   QStackedWidget *stack_{nullptr};
   CalxEditor *editor_{nullptr};
@@ -77,7 +81,13 @@ private:
   DisasmDock *disasm_{nullptr};
 
   DebugController *debugger_{nullptr};
+  HelpDialog *help_{nullptr};
   QLabel *statusMode_{nullptr};
+
+  QAction *actContinue_{nullptr};
+  QAction *actStepInto_{nullptr};
+  QAction *actStepOver_{nullptr};
+  QAction *actStepOut_{nullptr};
 
   QString currentFile_;
   bool dirty_{false};
