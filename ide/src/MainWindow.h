@@ -64,6 +64,7 @@ private:
   void createToolbars();
   void createDocks();
   void createShortcuts();
+  void updateToolbarIcons();
   [[nodiscard]] bool maybeSave();
   void setCurrentFile(const QString &path);
   void applyTheme(bool dark);
@@ -84,10 +85,16 @@ private:
   HelpDialog *help_{nullptr};
   QLabel *statusMode_{nullptr};
 
+  QAction *actRun_{nullptr};
+  QAction *actDebug_{nullptr};
   QAction *actContinue_{nullptr};
+  QAction *actPause_{nullptr};
+  QAction *actStop_{nullptr};
   QAction *actStepInto_{nullptr};
   QAction *actStepOver_{nullptr};
   QAction *actStepOut_{nullptr};
+  QAction *actEditorMode_{nullptr};
+  QAction *actReplMode_{nullptr};
 
   QString currentFile_;
   bool dirty_{false};

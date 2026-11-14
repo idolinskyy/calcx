@@ -16,22 +16,230 @@
 #include "calc/vm.hpp"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QEnterEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
 #include <QStyleFactory>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
+#include <functional>
 #include <sstream>
+
+namespace {
+
+enum class Glyph {
+  Run,
+  Debug,
+  Continue,
+  Pause,
+  Stop,
+  StepInto,
+  StepOver,
+  StepOut,
+  Editor,
+  Repl
+};
+
+void stroke(QPainter &p, const QColor &c) {
+  p.setPen(QPen(c, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+  p.setBrush(c);
+}
+
+void drawGlyph(QPainter &p, Glyph g, const QColor &c) {
+  stroke(p, c);
+  switch (g) {
+  case Glyph::Run: {
+    QPainterPath path;
+    path.moveTo(6.5, 4.5);
+    path.lineTo(15.5, 10);
+    path.lineTo(6.5, 15.5);
+    path.closeSubpath();
+    p.drawPath(path);
+    break;
+  }
+  case Glyph::Debug: {
+    QPainterPath path;
+    path.moveTo(5.5, 3.5);
+    path.lineTo(13.5, 9);
+    path.lineTo(5.5, 14.5);
+    path.closeSubpath();
+    p.drawPath(path);
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(QPointF(15.2, 15.0), 2.2, 2.2);
+    break;
+  }
+  case Glyph::Continue: {
+    QPainterPath a;
+    a.moveTo(3.5, 5);
+    a.lineTo(10, 10);
+    a.lineTo(3.5, 15);
+    a.closeSubpath();
+    QPainterPath b;
+    b.moveTo(10, 5);
+    b.lineTo(16.5, 10);
+    b.lineTo(10, 15);
+    b.closeSubpath();
+    p.drawPath(a);
+    p.drawPath(b);
+    break;
+  }
+  case Glyph::Pause:
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(QRectF(5.5, 4.5, 3.2, 11), 0.8, 0.8);
+    p.drawRoundedRect(QRectF(11.3, 4.5, 3.2, 11), 0.8, 0.8);
+    break;
+  case Glyph::Stop:
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(QRectF(5.5, 5.5, 9, 9), 1.2, 1.2);
+    break;
+  case Glyph::StepInto: {
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(10, 3.5), QPointF(10, 12.5));
+    QPainterPath arrow;
+    arrow.moveTo(6.5, 10.5);
+    arrow.lineTo(10, 15.5);
+    arrow.lineTo(13.5, 10.5);
+    p.setBrush(c);
+    p.drawPath(arrow);
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(5, 16.5), QPointF(15, 16.5));
+    break;
+  }
+  case Glyph::StepOver: {
+    p.setBrush(Qt::NoBrush);
+    QPainterPath arc;
+    arc.moveTo(4.5, 13);
+    arc.cubicTo(4.5, 5.5, 15.5, 5.5, 15.5, 11);
+    p.drawPath(arc);
+    QPainterPath arrow;
+    arrow.moveTo(12.5, 8.5);
+    arrow.lineTo(16.2, 12.2);
+    arrow.lineTo(11.2, 13.2);
+    p.setBrush(c);
+    p.drawPath(arrow);
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(QPointF(10, 15.5), 1.6, 1.6);
+    break;
+  }
+  case Glyph::StepOut: {
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(5, 16.5), QPointF(15, 16.5));
+    p.drawLine(QPointF(10, 15.5), QPointF(10, 6.5));
+    QPainterPath arrow;
+    arrow.moveTo(6.5, 9.5);
+    arrow.lineTo(10, 4.5);
+    arrow.lineTo(13.5, 9.5);
+    p.setBrush(c);
+    p.drawPath(arrow);
+    break;
+  }
+  case Glyph::Editor:
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(4.5, 3.5, 11, 13), 1.2, 1.2);
+    p.drawLine(QPointF(7, 7), QPointF(13, 7));
+    p.drawLine(QPointF(7, 10), QPointF(13, 10));
+    p.drawLine(QPointF(7, 13), QPointF(11, 13));
+    break;
+  case Glyph::Repl:
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(3.5, 4.5, 13, 11), 1.2, 1.2);
+    p.drawLine(QPointF(6, 8), QPointF(9, 10.5));
+    p.drawLine(QPointF(9, 10.5), QPointF(6, 13));
+    p.drawLine(QPointF(10.5, 13), QPointF(14, 13));
+    break;
+  }
+}
+
+class CalxToolButton final : public QToolButton {
+public:
+  CalxToolButton(Glyph glyph, bool mode, QWidget *parent)
+      : QToolButton(parent), glyph_(glyph), mode_(mode) {
+    setAutoRaise(true);
+    setFocusPolicy(Qt::NoFocus);
+    setFixedSize(30, 28);
+    setAttribute(Qt::WA_Hover, true);
+    setMouseTracking(true);
+  }
+
+  void setDarkUi(bool dark) {
+    dark_ = dark;
+    update();
+  }
+
+protected:
+  void enterEvent(QEnterEvent *event) override {
+    hovered_ = true;
+    QToolButton::enterEvent(event);
+    update();
+  }
+  void leaveEvent(QEvent *event) override {
+    hovered_ = false;
+    QToolButton::leaveEvent(event);
+    update();
+  }
+
+  void paintEvent(QPaintEvent *) override {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QColor ink = dark_ ? QColor(0xE8, 0xE8, 0xE8) : QColor(0x2A, 0x2A, 0x2A);
+    const QColor accent =
+        dark_ ? QColor(0x6C, 0xCB, 0xFF) : QColor(0x0B, 0x6A, 0xC9);
+    if (isEnabled() && (hovered_ || isDown())) {
+      const QColor wash = isDown()
+                              ? (dark_ ? QColor(0x4A, 0x4A, 0x50)
+                                       : QColor(0xD2, 0xD2, 0xD2))
+                              : (dark_ ? QColor(0x3C, 0x3C, 0x42)
+                                       : QColor(0xE2, 0xE2, 0xE2));
+      p.setPen(Qt::NoPen);
+      p.setBrush(wash);
+      p.drawRoundedRect(QRectF(2, 2, width() - 4, height() - 4), 4, 4);
+    }
+    if (isChecked()) {
+      p.fillRect(QRect(7, height() - 2, width() - 14, 2), accent);
+    }
+    p.save();
+    p.translate((width() - 20) / 2.0, (height() - 20) / 2.0 - 1);
+    const QColor glyphColor =
+        !isEnabled() ? QColor(ink.red(), ink.green(), ink.blue(), 70)
+                     : (mode_ && isChecked() ? accent : ink);
+    drawGlyph(p, glyph_, glyphColor);
+    p.restore();
+  }
+
+private:
+  Glyph glyph_;
+  bool mode_{false};
+  bool dark_{false};
+  bool hovered_{false};
+};
+
+std::vector<CalxToolButton *> toolbarButtons;
+
+void addTool(QToolBar *tb, QAction *action, Glyph glyph, bool mode) {
+  auto *btn = new CalxToolButton(glyph, mode, tb);
+  btn->setDefaultAction(action);
+  QObject::connect(action, &QAction::changed, btn,
+                   qOverload<>(&QWidget::update));
+  tb->addWidget(btn);
+  toolbarButtons.push_back(btn);
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(QStringLiteral("calx IDE"));
@@ -82,9 +290,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
       QStringLiteral("let x = 2 + 2;\nprint(\"x = {}\", x);\n"));
   dirty_ = false;
   updateWindowTitle();
-  if (darkTheme_) {
-    applyTheme(true);
-  }
+  applyTheme(darkTheme_);
 }
 
 void MainWindow::createDocks() {
@@ -130,15 +336,66 @@ void MainWindow::createMenus() {
   connect(formatOnSave, &QAction::toggled, this,
           &MainWindow::toggleFormatOnSave);
 
+  actRun_ = new QAction(QStringLiteral("Запустити"), this);
+  actRun_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+  actRun_->setToolTip(QStringLiteral("Запустити програму (Ctrl+R)"));
+  connect(actRun_, &QAction::triggered, this, &MainWindow::runProgram);
+
+  actDebug_ = new QAction(QStringLiteral("Дебаг"), this);
+  actDebug_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F5));
+  actDebug_->setToolTip(QStringLiteral("Почати дебаг (Shift+F5)"));
+  connect(actDebug_, &QAction::triggered, this, &MainWindow::debugStart);
+
+  actContinue_ = new QAction(QStringLiteral("Продовжити"), this);
+  actContinue_->setShortcut(QKeySequence(Qt::Key_F5));
+  actContinue_->setToolTip(QStringLiteral("Продовжити / запуск (F5)"));
+  connect(actContinue_, &QAction::triggered, this, &MainWindow::debugContinue);
+
+  actPause_ = new QAction(QStringLiteral("Пауза"), this);
+  actPause_->setToolTip(QStringLiteral("Пауза"));
+  connect(actPause_, &QAction::triggered, this, &MainWindow::debugPause);
+
+  actStop_ = new QAction(QStringLiteral("Стоп"), this);
+  actStop_->setToolTip(QStringLiteral("Зупинити дебаг"));
+  connect(actStop_, &QAction::triggered, this, &MainWindow::debugStop);
+
+  actStepInto_ = new QAction(QStringLiteral("Крок усередину"), this);
+  actStepInto_->setShortcut(QKeySequence(Qt::Key_F11));
+  actStepInto_->setToolTip(QStringLiteral("Крок усередину (F11)"));
+  connect(actStepInto_, &QAction::triggered, this, &MainWindow::debugStepInto);
+
+  actStepOver_ = new QAction(QStringLiteral("Крок через"), this);
+  actStepOver_->setShortcut(QKeySequence(Qt::Key_F10));
+  actStepOver_->setToolTip(QStringLiteral("Крок через (F10)"));
+  connect(actStepOver_, &QAction::triggered, this, &MainWindow::debugStepOver);
+
+  actStepOut_ = new QAction(QStringLiteral("Крок назовні"), this);
+  actStepOut_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F11));
+  actStepOut_->setToolTip(QStringLiteral("Крок назовні (Shift+F11)"));
+  connect(actStepOut_, &QAction::triggered, this, &MainWindow::debugStepOut);
+
+  actEditorMode_ = new QAction(QStringLiteral("Редактор"), this);
+  actEditorMode_->setToolTip(QStringLiteral("Режим редактора"));
+  actEditorMode_->setCheckable(true);
+  actEditorMode_->setChecked(true);
+  connect(actEditorMode_, &QAction::triggered, this,
+          &MainWindow::switchEditorMode);
+
+  actReplMode_ = new QAction(QStringLiteral("Інтерактив"), this);
+  actReplMode_->setToolTip(QStringLiteral("Інтерактивний калькулятор"));
+  actReplMode_->setCheckable(true);
+  connect(actReplMode_, &QAction::triggered, this, &MainWindow::switchReplMode);
+
+  auto *modeGroup = new QActionGroup(this);
+  modeGroup->setExclusive(true);
+  modeGroup->addAction(actEditorMode_);
+  modeGroup->addAction(actReplMode_);
+
   auto *runMenu = menuBar()->addMenu(QStringLiteral("&Виконання"));
-  runMenu->addAction(QStringLiteral("Запустити"), this, &MainWindow::runProgram,
-                     QKeySequence(Qt::CTRL | Qt::Key_R));
+  runMenu->addAction(actRun_);
   runMenu->addSeparator();
-  runMenu->addAction(QStringLiteral("Дебаг"), this, &MainWindow::debugStart,
-                     QKeySequence(Qt::SHIFT | Qt::Key_F5));
-  actContinue_ = runMenu->addAction(QStringLiteral("Продовжити / Запуск"), this,
-                                    &MainWindow::debugContinue,
-                                    QKeySequence(Qt::Key_F5));
+  runMenu->addAction(actDebug_);
+  runMenu->addAction(actContinue_);
   runMenu->addAction(
       QStringLiteral("Точка зупину"), this,
       [this] {
@@ -146,23 +403,16 @@ void MainWindow::createMenus() {
         editor_->toggleBreakpoint(line);
       },
       QKeySequence(Qt::Key_F9));
-  runMenu->addAction(QStringLiteral("Пауза"), this, &MainWindow::debugPause);
-  runMenu->addAction(QStringLiteral("Стоп"), this, &MainWindow::debugStop);
-  actStepInto_ = runMenu->addAction(QStringLiteral("Крок усередину"), this,
-                                    &MainWindow::debugStepInto,
-                                    QKeySequence(Qt::Key_F11));
-  actStepOver_ = runMenu->addAction(QStringLiteral("Крок через"), this,
-                                    &MainWindow::debugStepOver,
-                                    QKeySequence(Qt::Key_F10));
-  actStepOut_ = runMenu->addAction(QStringLiteral("Крок назовні"), this,
-                                   &MainWindow::debugStepOut,
-                                   QKeySequence(Qt::SHIFT | Qt::Key_F11));
+  runMenu->addAction(actPause_);
+  runMenu->addAction(actStop_);
+  runMenu->addSeparator();
+  runMenu->addAction(actStepInto_);
+  runMenu->addAction(actStepOver_);
+  runMenu->addAction(actStepOut_);
 
   auto *viewMenu = menuBar()->addMenu(QStringLiteral("&Вигляд"));
-  viewMenu->addAction(QStringLiteral("Редактор"), this,
-                      &MainWindow::switchEditorMode);
-  viewMenu->addAction(QStringLiteral("Інтерактив"), this,
-                      &MainWindow::switchReplMode);
+  viewMenu->addAction(actEditorMode_);
+  viewMenu->addAction(actReplMode_);
   viewMenu->addSeparator();
   viewMenu->addAction(console_->toggleViewAction());
   viewMenu->addAction(vars_->toggleViewAction());
@@ -182,31 +432,36 @@ void MainWindow::createMenus() {
                       &MainWindow::openAbout);
   helpMenu->addAction(QStringLiteral("Про Qt…"), this,
                       &MainWindow::openAboutQt);
+
+  updateToolbarIcons();
 }
 
 void MainWindow::createToolbars() {
   auto *tb = addToolBar(QStringLiteral("Основна"));
   tb->setObjectName(QStringLiteral("MainToolbar"));
-  tb->addAction(QStringLiteral("▶ Запуск"), this, &MainWindow::runProgram);
-  tb->addAction(QStringLiteral("🐞 Дебаг"), this, &MainWindow::debugStart);
-  if (actContinue_) {
-    tb->addAction(actContinue_);
-  } else {
-    tb->addAction(QStringLiteral("▶▶"), this, &MainWindow::debugContinue);
-  }
-  tb->addAction(QStringLiteral("⏸"), this, &MainWindow::debugPause);
-  tb->addAction(QStringLiteral("⏹"), this, &MainWindow::debugStop);
-  if (actStepInto_) {
-    tb->addAction(actStepInto_);
-  }
-  if (actStepOver_) {
-    tb->addAction(actStepOver_);
-  }
+  tb->setMovable(false);
+  tb->setFloatable(false);
+  tb->setIconSize(QSize(18, 18));
+
+  addTool(tb, actRun_, Glyph::Run, false);
+  addTool(tb, actDebug_, Glyph::Debug, false);
   tb->addSeparator();
-  tb->addAction(QStringLiteral("Редактор"), this,
-                &MainWindow::switchEditorMode);
-  tb->addAction(QStringLiteral("Інтерактив"), this,
-                &MainWindow::switchReplMode);
+  addTool(tb, actContinue_, Glyph::Continue, false);
+  addTool(tb, actPause_, Glyph::Pause, false);
+  addTool(tb, actStop_, Glyph::Stop, false);
+  tb->addSeparator();
+  addTool(tb, actStepInto_, Glyph::StepInto, false);
+  addTool(tb, actStepOver_, Glyph::StepOver, false);
+  addTool(tb, actStepOut_, Glyph::StepOut, false);
+  tb->addSeparator();
+  addTool(tb, actEditorMode_, Glyph::Editor, true);
+  addTool(tb, actReplMode_, Glyph::Repl, true);
+}
+
+void MainWindow::updateToolbarIcons() {
+  for (CalxToolButton *btn : toolbarButtons) {
+    btn->setDarkUi(darkTheme_);
+  }
 }
 
 void MainWindow::createShortcuts() {
@@ -368,11 +623,19 @@ void MainWindow::toggleFormatOnSave(bool enabled) {
 void MainWindow::switchEditorMode() {
   stack_->setCurrentWidget(editor_);
   statusMode_->setText(QStringLiteral("Редактор"));
+  if (actEditorMode_ && !actEditorMode_->isChecked()) {
+    actEditorMode_->setChecked(true);
+  }
+  updateToolbarIcons();
 }
 
 void MainWindow::switchReplMode() {
   stack_->setCurrentWidget(repl_);
   statusMode_->setText(QStringLiteral("Інтерактив"));
+  if (actReplMode_ && !actReplMode_->isChecked()) {
+    actReplMode_->setChecked(true);
+  }
+  updateToolbarIcons();
 }
 
 void MainWindow::toggleTheme() {
@@ -451,8 +714,11 @@ void MainWindow::applyTheme(bool dark) {
 
     qApp->setPalette(p);
     qApp->setStyleSheet(
-        QStringLiteral("QToolBar { spacing: 4px; }"
-                       "QToolButton { color: #dcdcdc; }"
+        QStringLiteral("QToolBar {"
+                       "  spacing: 2px; padding: 2px 4px;"
+                       "  background: #2d2d30; border: none;"
+                       "  border-bottom: 1px solid #3c3c40;"
+                       "}"
                        "QHeaderView::section {"
                        "  background-color: #37373a; color: #dcdcdc;"
                        "  padding: 4px; border: 1px solid #2a2a2d;"
@@ -479,9 +745,8 @@ void MainWindow::applyTheme(bool dark) {
     qApp->setPalette(
         QStyleFactory::create(QStringLiteral("Fusion"))->standardPalette());
   }
-  // Оновити підсвітку редакторів після зміни палітри.
+  updateToolbarIcons();
   editor_->syncThemeFromPalette();
-  // ReplWidget містить CalxEditor — він отримає PaletteChange сам.
 }
 
 void MainWindow::runProgram() {

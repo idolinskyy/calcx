@@ -52,6 +52,11 @@ void CalxHighlighter::setDark(bool dark) {
   rehighlight();
 }
 
+void CalxHighlighter::setSkipPrefixes(QStringList prefixes) {
+  skipPrefixes_ = std::move(prefixes);
+  rehighlight();
+}
+
 void CalxHighlighter::applyFormats() {
   if (dark_) {
     keywordFmt_.setForeground(QColor(QStringLiteral("#79c0ff")));
@@ -77,6 +82,30 @@ void CalxHighlighter::applyFormats() {
 }
 
 void CalxHighlighter::highlightBlock(const QString &text) {
+  int skip = 0;
+  if (!skipPrefixes_.isEmpty()) {
+    if (text.startsWith(QStringLiteral("помилка:"))) {
+      QTextCharFormat err;
+      err.setForeground(QColor(QStringLiteral("#cf222e")));
+      setFormat(0, text.size(), err);
+      return;
+    }
+    for (const QString &prefix : skipPrefixes_) {
+      if (text.startsWith(prefix)) {
+        skip = prefix.size();
+        QTextCharFormat prompt;
+        prompt.setForeground(dark_ ? QColor(QStringLiteral("#7aa2f7"))
+                                   : QColor(QStringLiteral("#0550ae")));
+        prompt.setFontWeight(QFont::DemiBold);
+        setFormat(0, skip, prompt);
+        break;
+      }
+    }
+  }
+  highlightSource(text.mid(skip), skip);
+}
+
+void CalxHighlighter::highlightSource(const QString &text, int offset) {
   // Лексер працює з UTF-8 байтами; setFormat — з індексами QString.
   const std::string src = text.toUtf8().toStdString();
   auto lexed = calc::tokenize(src);
@@ -160,7 +189,7 @@ void CalxHighlighter::highlightBlock(const QString &text) {
     default:
       continue;
     }
-    setFormat(from, len, fmt);
+    setFormat(offset + from, len, fmt);
   }
 
   bool in_string = false;
@@ -183,7 +212,7 @@ void CalxHighlighter::highlightBlock(const QString &text) {
     }
     if (c == QLatin1Char('/') && i + 1 < text.size() &&
         text[i + 1] == QLatin1Char('/')) {
-      setFormat(i, static_cast<int>(text.size() - i), commentFmt_);
+      setFormat(offset + i, static_cast<int>(text.size() - i), commentFmt_);
       break;
     }
   }

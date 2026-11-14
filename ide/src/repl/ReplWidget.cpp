@@ -1,14 +1,17 @@
 #include "repl/ReplWidget.h"
-#include "editor/CalxEditor.h"
+
+#include "editor/CalxHighlighter.h"
 #include "util/CalxAssist.h"
 
 #include "calc/engine.hpp"
 #include "calc/repl.hpp"
 
-#include <QHBoxLayout>
+#include <QEvent>
 #include <QKeyEvent>
-#include <QLabel>
 #include <QPlainTextEdit>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <fstream>
 #include <functional>
@@ -16,10 +19,10 @@
 
 namespace {
 
-class ReplInputFilter final : public QObject {
+class ReplKeyFilter final : public QObject {
 public:
   using Handler = std::function<bool(QKeyEvent *)>;
-  explicit ReplInputFilter(Handler h, QObject *parent = nullptr)
+  explicit ReplKeyFilter(Handler h, QObject *parent = nullptr)
       : QObject(parent), handler_(std::move(h)) {}
 
 protected:
@@ -42,75 +45,61 @@ ReplWidget::ReplWidget(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
 
-  output_ = new QPlainTextEdit(this);
-  output_->setReadOnly(true);
+  console_ = new QPlainTextEdit(this);
   QFont font(QStringLiteral("monospace"));
   font.setStyleHint(QFont::Monospace);
   font.setPointSize(10);
-  output_->setFont(font);
-  layout->addWidget(output_, 3);
+  console_->setFont(font);
+  console_->setUndoRedoEnabled(true);
+  console_->setTabChangesFocus(false);
+  highlighter_ = new CalxHighlighter(console_->document());
+  highlighter_->setSkipPrefixes(
+      {QStringLiteral("calx> "), QStringLiteral("...> ")});
+  highlighter_->setDark(
+      console_->palette().color(QPalette::Base).lightness() < 128);
+  layout->addWidget(console_, 1);
 
-  auto *row = new QHBoxLayout();
-  prompt_ = new QLabel(QStringLiteral("calx>"), this);
-  prompt_->setFont(font);
-  input_ = new CalxEditor(this);
-  input_->setMaximumBlockCount(0);
-  input_->document()->setMaximumBlockCount(0);
-  // Однорядковий за замовчуванням — висота ~3 рядки для continuation.
-  input_->setFixedHeight(fontMetrics().height() * 4 + 8);
-  row->addWidget(prompt_, 0);
-  row->addWidget(input_, 1);
-  layout->addLayout(row);
+  connect(console_->document(), &QTextDocument::contentsChange, this,
+          [this](int from, int, int) {
+            if (writing_ || from >= inputStart_) {
+              return;
+            }
+            QTimer::singleShot(0, this, [this] {
+              if (writing_) {
+                return;
+              }
+              writing_ = true;
+              console_->undo();
+              writing_ = false;
+              QTextCursor c = console_->textCursor();
+              if (c.position() < inputStart_) {
+                c.setPosition(docEnd());
+                console_->setTextCursor(c);
+              }
+            });
+          });
 
-  appendOut(QStringLiteral("Інтерактивний calx. :help — довідка, :clear — "
-                           "скинути сесію.\n"));
+  console_->installEventFilter(new ReplKeyFilter(
+      [this](QKeyEvent *ev) { return handleKey(ev); }, console_));
 
-  input_->installEventFilter(new ReplInputFilter(
-      [this](QKeyEvent *ev) {
-        if (ev->key() == Qt::Key_Return || ev->key() == Qt::Key_Enter) {
-          if (ev->modifiers() & Qt::ShiftModifier) {
-            return false; // новий рядок
-          }
-          onSubmit();
-          return true;
-        }
-        if (ev->key() == Qt::Key_Up &&
-            (ev->modifiers() == Qt::NoModifier ||
-             ev->modifiers() == Qt::KeypadModifier)) {
-          if (history_.isEmpty()) {
-            return true;
-          }
-          if (history_index_ < 0) {
-            history_index_ = history_.size() - 1;
-          } else if (history_index_ > 0) {
-            --history_index_;
-          }
-          input_->setPlainText(history_[history_index_]);
-          return true;
-        }
-        if (ev->key() == Qt::Key_Down &&
-            (ev->modifiers() == Qt::NoModifier ||
-             ev->modifiers() == Qt::KeypadModifier)) {
-          if (history_index_ < 0) {
-            return true;
-          }
-          if (history_index_ + 1 >= history_.size()) {
-            history_index_ = -1;
-            input_->clear();
-          } else {
-            ++history_index_;
-            input_->setPlainText(history_[history_index_]);
-          }
-          return true;
-        }
-        return false;
-      },
-      input_));
-
+  appendOut(QStringLiteral(
+      "Інтерактивний calx. :help — довідка, :clear — скинути сесію.\n"));
+  beginInput(QStringLiteral("calx>"));
   loadHistory();
 }
 
 ReplWidget::~ReplWidget() { saveHistory(); }
+
+void ReplWidget::changeEvent(QEvent *event) {
+  QWidget::changeEvent(event);
+  if (event->type() == QEvent::PaletteChange ||
+      event->type() == QEvent::ApplicationPaletteChange) {
+    if (highlighter_ && console_) {
+      highlighter_->setDark(
+          console_->palette().color(QPalette::Base).lightness() < 128);
+    }
+  }
+}
 
 QString ReplWidget::sessionSource() const {
   return QString::fromStdString(session_);
@@ -120,27 +109,85 @@ void ReplWidget::clearSession() {
   session_.clear();
   prev_output_.clear();
   pending_.clear();
-  setPrompt(false);
   appendOut(QStringLiteral("(сесію очищено)\n"));
+  beginInput(QStringLiteral("calx>"));
   Q_EMIT sessionUpdated({}, {});
 }
 
-void ReplWidget::setPrompt(bool continuation) {
-  prompt_->setText(continuation ? QStringLiteral("...>")
-                                : QStringLiteral("calx>"));
+int ReplWidget::docEnd() const {
+  return qMax(0, console_->document()->characterCount() - 1);
+}
+
+void ReplWidget::writeAtEnd(const QString &text, const QColor &color) {
+  writing_ = true;
+  QTextCursor c(console_->document());
+  c.movePosition(QTextCursor::End);
+  QTextCharFormat fmt;
+  fmt.setForeground(color.isValid() ? color
+                                    : console_->palette().color(QPalette::Text));
+  c.setCharFormat(fmt);
+  c.insertText(text);
+  writing_ = false;
+  console_->setTextCursor(c);
+  console_->ensureCursorVisible();
+}
+
+void ReplWidget::beginInput(const QString &prompt) {
+  const QString existing = console_->toPlainText();
+  if (!existing.isEmpty() && !existing.endsWith(QLatin1Char('\n'))) {
+    writeAtEnd(QStringLiteral("\n"), {});
+  }
+  const bool dark =
+      console_->palette().color(QPalette::Base).lightness() < 128;
+  const QColor promptColor = dark ? QColor(0x7a, 0xa2, 0xf7)
+                                  : QColor(0x05, 0x50, 0xae);
+  writeAtEnd(prompt + QStringLiteral(" "), promptColor);
+  inputStart_ = docEnd();
+  QTextCursor c = console_->textCursor();
+  c.movePosition(QTextCursor::End);
+  QTextCharFormat normal;
+  normal.setForeground(console_->palette().color(QPalette::Text));
+  c.setCharFormat(normal);
+  console_->setTextCursor(c);
+  console_->ensureCursorVisible();
+}
+
+QString ReplWidget::currentInput() const {
+  return console_->toPlainText().mid(inputStart_);
+}
+
+void ReplWidget::setCurrentInput(const QString &text) {
+  writing_ = true;
+  QTextCursor c(console_->document());
+  c.setPosition(inputStart_);
+  c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+  c.removeSelectedText();
+  QTextCharFormat normal;
+  normal.setForeground(console_->palette().color(QPalette::Text));
+  c.setCharFormat(normal);
+  c.insertText(text);
+  writing_ = false;
+  console_->setTextCursor(c);
+  console_->ensureCursorVisible();
 }
 
 void ReplWidget::appendOut(const QString &text) {
-  output_->moveCursor(QTextCursor::End);
-  output_->insertPlainText(text);
-  output_->moveCursor(QTextCursor::End);
+  const QString existing = console_->toPlainText();
+  if (!existing.isEmpty() && !existing.endsWith(QLatin1Char('\n')) &&
+      !text.startsWith(QLatin1Char('\n'))) {
+    writeAtEnd(QStringLiteral("\n"), {});
+  }
+  writeAtEnd(text, {});
 }
 
 void ReplWidget::appendErr(const QString &text) {
-  output_->moveCursor(QTextCursor::End);
-  output_->appendHtml(
-      QStringLiteral("<span style=\"color:#cf222e\">%1</span><br/>")
-          .arg(text.toHtmlEscaped()));
+  const QString existing = console_->toPlainText();
+  if (!existing.isEmpty() && !existing.endsWith(QLatin1Char('\n'))) {
+    writeAtEnd(QStringLiteral("\n"), {});
+  }
+  const QString line =
+      text.endsWith(QLatin1Char('\n')) ? text : text + QLatin1Char('\n');
+  writeAtEnd(line, QColor(0xcf, 0x22, 0x2e));
 }
 
 void ReplWidget::loadHistory() {
@@ -161,28 +208,135 @@ void ReplWidget::saveHistory() {
   }
 }
 
+bool ReplWidget::handleKey(QKeyEvent *ev) {
+  QTextCursor cursor = console_->textCursor();
+  const int pos = cursor.position();
+  const int selStart = qMin(pos, cursor.anchor());
+  const int selEnd = qMax(pos, cursor.anchor());
+
+  const auto block = cursor.block();
+  const bool onFirstInputLine =
+      block.position() <= inputStart_ &&
+      inputStart_ < block.position() + block.length();
+  const bool onLastLine = block == console_->document()->lastBlock();
+
+  const bool copy = ev->matches(QKeySequence::Copy);
+  const bool paste = ev->matches(QKeySequence::Paste);
+  const bool cut = ev->matches(QKeySequence::Cut);
+  const bool selectAll = ev->matches(QKeySequence::SelectAll);
+
+  if (selectAll) {
+    QTextCursor c(console_->document());
+    c.setPosition(inputStart_);
+    c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+    console_->setTextCursor(c);
+    return true;
+  }
+  if (copy) {
+    return false;
+  }
+
+  if (ev->key() == Qt::Key_Return || ev->key() == Qt::Key_Enter) {
+    if (ev->modifiers() & Qt::ShiftModifier) {
+      if (selStart < inputStart_) {
+        QTextCursor c = cursor;
+        c.setPosition(docEnd());
+        console_->setTextCursor(c);
+      }
+      console_->insertPlainText(QStringLiteral("\n"));
+      return true;
+    }
+    onSubmit();
+    return true;
+  }
+
+  if (ev->key() == Qt::Key_Up &&
+      (ev->modifiers() == Qt::NoModifier ||
+       ev->modifiers() == Qt::KeypadModifier) &&
+      onFirstInputLine) {
+    if (history_.isEmpty()) {
+      return true;
+    }
+    if (history_index_ < 0) {
+      history_index_ = history_.size() - 1;
+    } else if (history_index_ > 0) {
+      --history_index_;
+    }
+    setCurrentInput(history_[history_index_]);
+    return true;
+  }
+  if (ev->key() == Qt::Key_Down &&
+      (ev->modifiers() == Qt::NoModifier ||
+       ev->modifiers() == Qt::KeypadModifier) &&
+      onLastLine) {
+    if (history_index_ < 0) {
+      return true;
+    }
+    if (history_index_ + 1 >= history_.size()) {
+      history_index_ = -1;
+      setCurrentInput({});
+    } else {
+      ++history_index_;
+      setCurrentInput(history_[history_index_]);
+    }
+    return true;
+  }
+
+  if (ev->key() == Qt::Key_Home && onFirstInputLine &&
+      (ev->modifiers() == Qt::NoModifier ||
+       ev->modifiers() == Qt::ShiftModifier)) {
+    QTextCursor c = cursor;
+    c.setPosition(inputStart_, ev->modifiers() == Qt::ShiftModifier
+                                   ? QTextCursor::KeepAnchor
+                                   : QTextCursor::MoveAnchor);
+    console_->setTextCursor(c);
+    return true;
+  }
+
+  if ((ev->key() == Qt::Key_Backspace || ev->key() == Qt::Key_Left) &&
+      selStart == selEnd && pos <= inputStart_) {
+    return true;
+  }
+  if (ev->key() == Qt::Key_Delete && selStart == selEnd && pos < inputStart_) {
+    return true;
+  }
+
+  const bool edits = !ev->text().isEmpty() || cut || paste ||
+                     ev->key() == Qt::Key_Backspace ||
+                     ev->key() == Qt::Key_Delete || ev->key() == Qt::Key_Tab;
+  if (edits && selStart < inputStart_) {
+    QTextCursor c = cursor;
+    c.setPosition(docEnd());
+    console_->setTextCursor(c);
+    return false;
+  }
+  return false;
+}
+
 void ReplWidget::onSubmit() {
-  const QString raw = input_->toPlainText().trimmed();
-  input_->clear();
+  const QString raw = currentInput().trimmed();
   history_index_ = -1;
   if (raw.isEmpty()) {
     return;
   }
 
-  appendOut(prompt_->text() + QLatin1Char(' ') + raw + QLatin1Char('\n'));
+  inputStart_ = docEnd();
 
   const std::string cmd = raw.toStdString();
   if (cmd == ":q" || cmd == ":quit" || cmd == ":exit" || cmd == "quit" ||
       cmd == "exit") {
-    appendOut(QStringLiteral("(у GUI використовуйте меню Файл → Вийти)\n"));
+    appendOut(QStringLiteral(
+        "(у GUI використовуйте меню Файл → Вийти)\n"));
+    beginInput(QStringLiteral("calx>"));
     return;
   }
   if (cmd == ":h" || cmd == ":help" || cmd == "help") {
-    appendOut(
-        QStringLiteral("Рядки накопичуються в сесію. Незакриті { ( [ — "
-                       "продовження (...>).\n"
-                       "Shift+Enter — новий рядок у вводі. Enter — виконати.\n"
-                       "Команди: :help  :clear\n"));
+    appendOut(QStringLiteral(
+        "Рядки накопичуються в сесію. Незакриті { ( [ — "
+        "продовження (...>).\n"
+        "Shift+Enter — новий рядок. Enter — виконати.\n"
+        "Команди: :help  :clear\n"));
+    beginInput(QStringLiteral("calx>"));
     return;
   }
   if (cmd == ":clear" || cmd == ":reset") {
@@ -198,14 +352,14 @@ void ReplWidget::onSubmit() {
     pending_ += cmd;
   }
   if (!calc::repl_source_complete(pending_)) {
-    setPrompt(true);
+    beginInput(QStringLiteral("...>"));
     return;
   }
 
   const std::string chunk = calc::repl_ensure_stmt(pending_);
   pending_.clear();
-  setPrompt(false);
   if (chunk.empty()) {
+    beginInput(QStringLiteral("calx>"));
     return;
   }
 
@@ -220,6 +374,7 @@ void ReplWidget::onSubmit() {
                   .arg(d.message.empty()
                            ? QString::fromStdString(calc::error_message(d.code))
                            : QString::fromStdString(d.message)));
+    beginInput(QStringLiteral("calx>"));
     return;
   }
 
@@ -236,5 +391,6 @@ void ReplWidget::onSubmit() {
   if (!delta.isEmpty()) {
     appendOut(delta);
   }
+  beginInput(QStringLiteral("calx>"));
   Q_EMIT sessionUpdated(QString::fromStdString(session_), delta);
 }
