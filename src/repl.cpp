@@ -20,6 +20,10 @@
 #include <vector>
 
 namespace calc {
+
+const std::string *compl_session = nullptr;
+const std::string *compl_pending = nullptr;
+
 namespace {
 
 using Replxx = replxx::Replxx;
@@ -405,11 +409,32 @@ Replxx::completions_t complete(std::string const &context, int &context_len) {
   context_len = utf8_len;
 
   Replxx::completions_t out;
-  for (const auto &w : completion_words()) {
-    if (w.size() >= prefix.size() && w.compare(0, prefix.size(), prefix) == 0) {
-      out.emplace_back(w.c_str());
+  auto consider = [&](const std::string &w) {
+    if (w.size() < prefix.size() || w.compare(0, prefix.size(), prefix) != 0) {
+      return;
     }
+    for (const auto &have : out) {
+      if (have.text() == w) {
+        return;
+      }
+    }
+    out.emplace_back(w.c_str());
+  };
+  for (const auto &w : completion_words()) {
+    consider(w);
   }
+  auto add_funs = [&](const std::string &src) {
+    for (const auto &fn : scan_user_functions(src)) {
+      consider(fn.name);
+    }
+  };
+  if (compl_session != nullptr) {
+    add_funs(*compl_session);
+  }
+  if (compl_pending != nullptr && !compl_pending->empty()) {
+    add_funs(*compl_pending);
+  }
+  add_funs(context);
   return out;
 }
 
@@ -431,6 +456,8 @@ int run_repl() {
   std::string session;
   std::string prev_output;
   std::string pending; ///< незавершений багаторядковий ввід
+  compl_session = &session;
+  compl_pending = &pending;
 
   while (true) {
     const char *prompt =
@@ -500,6 +527,8 @@ int run_repl() {
   }
 
   rx.history_save(hist);
+  compl_session = nullptr;
+  compl_pending = nullptr;
   return 0;
 }
 

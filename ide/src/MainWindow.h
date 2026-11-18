@@ -70,6 +70,7 @@ private:
   void applyTheme(bool dark);
   [[nodiscard]] bool formatBeforeSave();
   void setDiagnosticFromMessage(const QString &message);
+  void refreshCursorStatus();
 
   QStackedWidget *stack_{nullptr};
   CalxEditor *editor_{nullptr};
@@ -84,6 +85,7 @@ private:
   DebugController *debugger_{nullptr};
   HelpDialog *help_{nullptr};
   QLabel *statusMode_{nullptr};
+  QLabel *statusPos_{nullptr};
 
   QAction *actRun_{nullptr};
   QAction *actDebug_{nullptr};

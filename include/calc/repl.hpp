@@ -3,8 +3,23 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace calc {
+
+/// Оголошення `fun`, знайдене в тексті без повного розбору.
+/// Тіло може бути обірваним: для доповнення й підказки вистачає імені.
+struct UserFunction {
+  std::string name;
+  std::vector<std::string> params;
+  /// true, якщо після імені вже стоїть `(`.
+  bool has_signature{false};
+};
+
+/// Усі `fun ім'я` у тексті. Коментарі й рядки ігноруються.
+/// Повторне ім'я лишає останній підпис.
+[[nodiscard]] std::vector<UserFunction>
+scan_user_functions(std::string_view source);
 
 /// Чи збалансовані дужки/дужки масиву (поза рядками) — для багаторядкового вводу.
 /// Реалізовано в libcalc (без replxx) — для CLI і IDE.

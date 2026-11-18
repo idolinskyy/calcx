@@ -1,8 +1,12 @@
 #pragma once
 
+#include "calc/repl.hpp"
+
 #include <QPlainTextEdit>
 #include <QSet>
 #include <QString>
+#include <QStringList>
+#include <vector>
 
 class CalxHighlighter;
 class QCompleter;
@@ -25,7 +29,6 @@ public:
   void setDiagnosticUnderline(int line1based, int column1based, int length);
   void clearDiagnostics();
 
-  void setExtraCompletions(const QStringList &names);
   /// Повне форматування; false — помилка розбору (текст не змінено).
   [[nodiscard]] bool formatDocument(QString *error_out = nullptr);
   void syncThemeFromPalette();
@@ -51,6 +54,8 @@ private:
   LineNumberArea *lineNumberArea_{nullptr};
   CalxHighlighter *highlighter_{nullptr};
   QCompleter *completer_{nullptr};
+  std::vector<calc::UserFunction> userFuns_;
+  QStringList userFunNames_;
   QSet<int> breakpoints_;
   int debugLine_{0};
   int diagLine_{0};
@@ -59,6 +64,7 @@ private:
 
   void updateExtraSelections();
   void showCompletions();
+  void refreshUserFunctions();
   [[nodiscard]] bool isDark() const;
 
   bool dark_{false};

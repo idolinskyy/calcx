@@ -34,6 +34,7 @@
 #include <QStatusBar>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QTextCursor>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -196,15 +197,15 @@ protected:
   void paintEvent(QPaintEvent *) override {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor ink = dark_ ? QColor(0xE8, 0xE8, 0xE8) : QColor(0x2A, 0x2A, 0x2A);
+    const QColor ink =
+        dark_ ? QColor(0xE8, 0xE8, 0xE8) : QColor(0x2A, 0x2A, 0x2A);
     const QColor accent =
         dark_ ? QColor(0x6C, 0xCB, 0xFF) : QColor(0x0B, 0x6A, 0xC9);
     if (isEnabled() && (hovered_ || isDown())) {
-      const QColor wash = isDown()
-                              ? (dark_ ? QColor(0x4A, 0x4A, 0x50)
-                                       : QColor(0xD2, 0xD2, 0xD2))
-                              : (dark_ ? QColor(0x3C, 0x3C, 0x42)
-                                       : QColor(0xE2, 0xE2, 0xE2));
+      const QColor wash =
+          isDown()
+              ? (dark_ ? QColor(0x4A, 0x4A, 0x50) : QColor(0xD2, 0xD2, 0xD2))
+              : (dark_ ? QColor(0x3C, 0x3C, 0x42) : QColor(0xE2, 0xE2, 0xE2));
       p.setPen(Qt::NoPen);
       p.setBrush(wash);
       p.drawRoundedRect(QRectF(2, 2, width() - 4, height() - 4), 4, 4);
@@ -264,6 +265,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   createToolbars();
   createShortcuts();
 
+  statusPos_ = new QLabel(QStringLiteral("Рядок 1, стовпець 1"), this);
+  statusPos_->setMinimumWidth(statusPos_->fontMetrics().horizontalAdvance(
+      QStringLiteral("Рядок 99999, стовпець 999  ·  виділено 99999")));
+  statusBar()->addPermanentWidget(statusPos_);
   statusMode_ = new QLabel(QStringLiteral("Редактор"), this);
   statusBar()->addPermanentWidget(statusMode_);
   statusBar()->showMessage(QStringLiteral("Готово"));
@@ -272,6 +277,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     dirty_ = true;
     updateWindowTitle();
   });
+  connect(editor_, &CalxEditor::cursorPositionChanged, this,
+          &MainWindow::refreshCursorStatus);
+  connect(editor_, &CalxEditor::selectionChanged, this,
+          &MainWindow::refreshCursorStatus);
+  connect(repl_, &ReplWidget::cursorMoved, this,
+          &MainWindow::refreshCursorStatus);
   connect(editor_, &CalxEditor::breakpointsChanged, this,
           &MainWindow::onBreakpointsChanged);
   connect(repl_, &ReplWidget::sessionUpdated, this,
@@ -620,6 +631,28 @@ void MainWindow::toggleFormatOnSave(bool enabled) {
       3000);
 }
 
+void MainWindow::refreshCursorStatus() {
+  if (!statusPos_) {
+    return;
+  }
+  int line = 1;
+  int column = 1;
+  int selected = 0;
+  if (stack_ && repl_ && stack_->currentWidget() == repl_) {
+    repl_->cursorPlace(line, column, selected);
+  } else if (editor_) {
+    const QTextCursor c = editor_->textCursor();
+    line = c.blockNumber() + 1;
+    column = c.positionInBlock() + 1;
+    selected = c.selectionEnd() - c.selectionStart();
+  }
+  QString text = QStringLiteral("Рядок %1, стовпець %2").arg(line).arg(column);
+  if (selected > 0) {
+    text += QStringLiteral("  ·  виділено %1").arg(selected);
+  }
+  statusPos_->setText(text);
+}
+
 void MainWindow::switchEditorMode() {
   stack_->setCurrentWidget(editor_);
   statusMode_->setText(QStringLiteral("Редактор"));
@@ -627,6 +660,7 @@ void MainWindow::switchEditorMode() {
     actEditorMode_->setChecked(true);
   }
   updateToolbarIcons();
+  refreshCursorStatus();
 }
 
 void MainWindow::switchReplMode() {
@@ -636,6 +670,7 @@ void MainWindow::switchReplMode() {
     actReplMode_->setChecked(true);
   }
   updateToolbarIcons();
+  refreshCursorStatus();
 }
 
 void MainWindow::toggleTheme() {
@@ -773,20 +808,6 @@ void MainWindow::runProgram() {
     statusBar()->showMessage(QStringLiteral("Помилка компіляції"), 5000);
     return;
   }
-
-  // Імена fun для completer.
-  QStringList funNames;
-  for (const auto &fn : compiled->functions) {
-    funNames << QString::fromStdString(fn.name);
-  }
-  auto lexed = calc::tokenize(src);
-  for (const auto &tok : lexed.tokens) {
-    if (tok.kind == calc::TokenKind::Identifier) {
-      funNames << QString::fromUtf8(tok.text.data(),
-                                    static_cast<int>(tok.text.size()));
-    }
-  }
-  editor_->setExtraCompletions(funNames);
 
   std::ostringstream captured;
   auto ran = calc::execute_with_locals(*compiled, captured);

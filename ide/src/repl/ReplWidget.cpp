@@ -6,12 +6,18 @@
 #include "calc/engine.hpp"
 #include "calc/repl.hpp"
 
+#include <QAbstractItemView>
+#include <QCompleter>
 #include <QEvent>
+#include <QHelpEvent>
 #include <QKeyEvent>
 #include <QPlainTextEdit>
+#include <QScrollBar>
+#include <QStringListModel>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTimer>
+#include <QToolTip>
 #include <QVBoxLayout>
 #include <fstream>
 #include <functional>
@@ -55,9 +61,20 @@ ReplWidget::ReplWidget(QWidget *parent) : QWidget(parent) {
   highlighter_ = new CalxHighlighter(console_->document());
   highlighter_->setSkipPrefixes(
       {QStringLiteral("calx> "), QStringLiteral("...> ")});
-  highlighter_->setDark(
-      console_->palette().color(QPalette::Base).lightness() < 128);
+  highlighter_->setDark(console_->palette().color(QPalette::Base).lightness() <
+                        128);
   layout->addWidget(console_, 1);
+
+  completer_ = new QCompleter(calx::completionBase(), this);
+  completer_->setWidget(console_);
+  completer_->setCompletionMode(QCompleter::PopupCompletion);
+  completer_->setCaseSensitivity(Qt::CaseInsensitive);
+  completer_->setFilterMode(Qt::MatchStartsWith);
+  connect(completer_, QOverload<const QString &>::of(&QCompleter::activated),
+          this, &ReplWidget::insertCompletion);
+
+  connect(console_, &QPlainTextEdit::cursorPositionChanged, this,
+          &ReplWidget::cursorMoved);
 
   connect(console_->document(), &QTextDocument::contentsChange, this,
           [this](int from, int, int) {
@@ -81,6 +98,7 @@ ReplWidget::ReplWidget(QWidget *parent) : QWidget(parent) {
 
   console_->installEventFilter(new ReplKeyFilter(
       [this](QKeyEvent *ev) { return handleKey(ev); }, console_));
+  console_->installEventFilter(this);
 
   appendOut(QStringLiteral(
       "Інтерактивний calx. :help — довідка, :clear — скинути сесію.\n"));
@@ -89,6 +107,13 @@ ReplWidget::ReplWidget(QWidget *parent) : QWidget(parent) {
 }
 
 ReplWidget::~ReplWidget() { saveHistory(); }
+
+void ReplWidget::cursorPlace(int &line, int &column, int &selected) const {
+  const QTextCursor c = console_->textCursor();
+  line = c.blockNumber() + 1;
+  column = c.positionInBlock() + 1;
+  selected = c.selectionEnd() - c.selectionStart();
+}
 
 void ReplWidget::changeEvent(QEvent *event) {
   QWidget::changeEvent(event);
@@ -123,8 +148,8 @@ void ReplWidget::writeAtEnd(const QString &text, const QColor &color) {
   QTextCursor c(console_->document());
   c.movePosition(QTextCursor::End);
   QTextCharFormat fmt;
-  fmt.setForeground(color.isValid() ? color
-                                    : console_->palette().color(QPalette::Text));
+  fmt.setForeground(
+      color.isValid() ? color : console_->palette().color(QPalette::Text));
   c.setCharFormat(fmt);
   c.insertText(text);
   writing_ = false;
@@ -137,10 +162,9 @@ void ReplWidget::beginInput(const QString &prompt) {
   if (!existing.isEmpty() && !existing.endsWith(QLatin1Char('\n'))) {
     writeAtEnd(QStringLiteral("\n"), {});
   }
-  const bool dark =
-      console_->palette().color(QPalette::Base).lightness() < 128;
-  const QColor promptColor = dark ? QColor(0x7a, 0xa2, 0xf7)
-                                  : QColor(0x05, 0x50, 0xae);
+  const bool dark = console_->palette().color(QPalette::Base).lightness() < 128;
+  const QColor promptColor =
+      dark ? QColor(0x7a, 0xa2, 0xf7) : QColor(0x05, 0x50, 0xae);
   writeAtEnd(prompt + QStringLiteral(" "), promptColor);
   inputStart_ = docEnd();
   QTextCursor c = console_->textCursor();
@@ -214,10 +238,30 @@ bool ReplWidget::handleKey(QKeyEvent *ev) {
   const int selStart = qMin(pos, cursor.anchor());
   const int selEnd = qMax(pos, cursor.anchor());
 
+  if (completer_ && completer_->popup()->isVisible()) {
+    switch (ev->key()) {
+    case Qt::Key_Enter:
+    case Qt::Key_Return:
+    case Qt::Key_Escape:
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+      return false;
+    default:
+      break;
+    }
+  }
+
+  if (ev->key() == Qt::Key_Space && (ev->modifiers() & Qt::ControlModifier) &&
+      pos >= inputStart_) {
+    showCompletions();
+    return true;
+  }
+
   const auto block = cursor.block();
-  const bool onFirstInputLine =
-      block.position() <= inputStart_ &&
-      inputStart_ < block.position() + block.length();
+  const bool onFirstInputLine = block.position() <= inputStart_ &&
+                                inputStart_ < block.position() + block.length();
   const bool onLastLine = block == console_->document()->lastBlock();
 
   const bool copy = ev->matches(QKeySequence::Copy);
@@ -310,7 +354,118 @@ bool ReplWidget::handleKey(QKeyEvent *ev) {
     console_->setTextCursor(c);
     return false;
   }
+
+  const bool typingIdent =
+      (ev->modifiers() == Qt::NoModifier ||
+       ev->modifiers() == Qt::ShiftModifier) &&
+      !ev->text().isEmpty() &&
+      (ev->text().at(0).isLetter() || ev->text().at(0) == QLatin1Char('_'));
+  if (typingIdent && pos >= inputStart_) {
+    QTimer::singleShot(0, this, [this] { showCompletions(); });
+  }
   return false;
+}
+
+QString ReplWidget::symbolSource() const {
+  QString src = QString::fromStdString(session_);
+  if (!pending_.empty()) {
+    if (!src.isEmpty() && !src.endsWith(QLatin1Char('\n'))) {
+      src += QLatin1Char('\n');
+    }
+    src += QString::fromStdString(pending_);
+  }
+  const QString cur = currentInput();
+  if (!cur.isEmpty()) {
+    if (!src.isEmpty() && !src.endsWith(QLatin1Char('\n'))) {
+      src += QLatin1Char('\n');
+    }
+    src += cur;
+  }
+  return src;
+}
+
+void ReplWidget::refreshCompletions() {
+  const auto funs = calc::scan_user_functions(symbolSource().toStdString());
+  QStringList names = calx::completionBase();
+  for (const auto &fn : funs) {
+    names << QString::fromStdString(fn.name);
+  }
+  names.removeDuplicates();
+  names.sort(Qt::CaseInsensitive);
+  if (names == completionNames_) {
+    return;
+  }
+  completionNames_ = names;
+  completer_->setModel(new QStringListModel(names, completer_));
+}
+
+void ReplWidget::showCompletions() {
+  if (!completer_) {
+    return;
+  }
+  QTextCursor tc = console_->textCursor();
+  if (tc.position() < inputStart_) {
+    completer_->popup()->hide();
+    return;
+  }
+  tc.select(QTextCursor::WordUnderCursor);
+  if (tc.selectionStart() < inputStart_) {
+    completer_->popup()->hide();
+    return;
+  }
+  const QString prefix = tc.selectedText();
+  if (prefix.size() < 1) {
+    completer_->popup()->hide();
+    return;
+  }
+  refreshCompletions();
+  completer_->setCompletionPrefix(prefix);
+  if (completer_->completionCount() == 0) {
+    completer_->popup()->hide();
+    return;
+  }
+  QRect cr = console_->cursorRect();
+  cr.setWidth(completer_->popup()->sizeHintForColumn(0) +
+              completer_->popup()->verticalScrollBar()->sizeHint().width());
+  completer_->complete(cr);
+}
+
+void ReplWidget::insertCompletion(const QString &completion) {
+  if (!completer_ || completer_->widget() != console_) {
+    return;
+  }
+  QTextCursor tc = console_->textCursor();
+  if (tc.position() < inputStart_) {
+    return;
+  }
+  const int extra =
+      completion.length() - completer_->completionPrefix().length();
+  tc.movePosition(QTextCursor::Left);
+  tc.movePosition(QTextCursor::EndOfWord);
+  tc.insertText(completion.right(extra));
+  console_->setTextCursor(tc);
+}
+
+bool ReplWidget::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == console_ && event->type() == QEvent::ToolTip) {
+    auto *help = static_cast<QHelpEvent *>(event);
+    QTextCursor cur = console_->cursorForPosition(
+        console_->viewport()->mapFromGlobal(help->globalPos()));
+    cur.select(QTextCursor::WordUnderCursor);
+    const QString word = cur.selectedText();
+    QString tip = calx::hoverTextFor(word);
+    if (tip.isEmpty()) {
+      tip = calx::userFunctionHover(
+          calc::scan_user_functions(symbolSource().toStdString()), word);
+    }
+    if (!tip.isEmpty()) {
+      QToolTip::showText(help->globalPos(), tip, console_);
+    } else {
+      QToolTip::hideText();
+    }
+    return true;
+  }
+  return QWidget::eventFilter(watched, event);
 }
 
 void ReplWidget::onSubmit() {
@@ -325,17 +480,15 @@ void ReplWidget::onSubmit() {
   const std::string cmd = raw.toStdString();
   if (cmd == ":q" || cmd == ":quit" || cmd == ":exit" || cmd == "quit" ||
       cmd == "exit") {
-    appendOut(QStringLiteral(
-        "(у GUI використовуйте меню Файл → Вийти)\n"));
+    appendOut(QStringLiteral("(у GUI використовуйте меню Файл → Вийти)\n"));
     beginInput(QStringLiteral("calx>"));
     return;
   }
   if (cmd == ":h" || cmd == ":help" || cmd == "help") {
-    appendOut(QStringLiteral(
-        "Рядки накопичуються в сесію. Незакриті { ( [ — "
-        "продовження (...>).\n"
-        "Shift+Enter — новий рядок. Enter — виконати.\n"
-        "Команди: :help  :clear\n"));
+    appendOut(QStringLiteral("Рядки накопичуються в сесію. Незакриті { ( [ — "
+                             "продовження (...>).\n"
+                             "Shift+Enter — новий рядок. Enter — виконати.\n"
+                             "Команди: :help  :clear\n"));
     beginInput(QStringLiteral("calx>"));
     return;
   }

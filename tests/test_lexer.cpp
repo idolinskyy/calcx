@@ -1,6 +1,7 @@
 // Строгі тести лексера: види токенів, позиції, літерали, помилки.
 #include "calc/lexer.hpp"
 
+#include <clocale>
 #include <doctest/doctest.h>
 
 using calc::ErrorCode;
@@ -82,6 +83,16 @@ TEST_CASE("real literals with dot or exponent") {
   CHECK(r.tokens[1].number == doctest::Approx(0.5).epsilon(1e-12));
   CHECK(r.tokens[2].kind == TokenKind::RealLit);
   CHECK(r.tokens[2].number == doctest::Approx(20.0).epsilon(1e-12));
+}
+
+TEST_CASE("real literal survives comma decimal locale") {
+  const char *prev = std::setlocale(LC_NUMERIC, "uk_UA.utf8");
+  REQUIRE(prev != nullptr);
+  auto r = tokenize("let a = 1.0;");
+  std::setlocale(LC_NUMERIC, "C");
+  REQUIRE(r.error.code == ErrorCode::Ok);
+  CHECK(r.tokens[3].kind == TokenKind::RealLit);
+  CHECK(r.tokens[3].number == doctest::Approx(1.0).epsilon(1e-12));
 }
 
 TEST_CASE("sample program token kinds and positions") {

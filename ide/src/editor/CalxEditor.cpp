@@ -70,6 +70,8 @@ CalxEditor::CalxEditor(QWidget *parent) : QPlainTextEdit(parent) {
   completer_->setFilterMode(Qt::MatchStartsWith);
   connect(completer_, QOverload<const QString &>::of(&QCompleter::activated),
           this, &CalxEditor::insertCompletion);
+  connect(this, &CalxEditor::textChanged, this,
+          &CalxEditor::refreshUserFunctions);
 
   connect(this, &CalxEditor::blockCountChanged, this,
           &CalxEditor::updateLineNumberAreaWidth);
@@ -268,7 +270,18 @@ void CalxEditor::clearDiagnostics() {
   updateExtraSelections();
 }
 
-void CalxEditor::setExtraCompletions(const QStringList &names) {
+void CalxEditor::refreshUserFunctions() {
+  userFuns_ = calc::scan_user_functions(toPlainText().toStdString());
+  QStringList names;
+  for (const auto &fn : userFuns_) {
+    names << QString::fromStdString(fn.name);
+  }
+  names.removeDuplicates();
+  names.sort(Qt::CaseInsensitive);
+  if (names == userFunNames_) {
+    return;
+  }
+  userFunNames_ = names;
   QStringList all = calx::completionBase();
   all += names;
   all.removeDuplicates();
@@ -277,18 +290,30 @@ void CalxEditor::setExtraCompletions(const QStringList &names) {
 }
 
 bool CalxEditor::formatDocument(QString *error_out) {
-  const auto result = calx::formatSource(toPlainText());
+  const QString before = toPlainText();
+  const auto result = calx::formatSource(before);
   if (!result.ok) {
     if (error_out) {
       *error_out = result.error;
     }
     return false;
   }
+  if (result.text == before) {
+    return true;
+  }
+  // setPlainText() очищає стек Undo/Redo. Заміна курсором лишає попередні
+  // кроки, а саме форматування стає одним скасуванням.
   const int pos = textCursor().position();
-  setPlainText(result.text);
-  QTextCursor c = textCursor();
-  c.setPosition(qMin(pos, static_cast<int>(toPlainText().size())));
+  const int scroll = verticalScrollBar()->value();
+  QTextCursor c(document());
+  c.beginEditBlock();
+  c.select(QTextCursor::Document);
+  c.insertText(result.text);
+  c.endEditBlock();
+  const int maxPos = qMax(0, document()->characterCount() - 1);
+  c.setPosition(qMin(pos, maxPos));
   setTextCursor(c);
+  verticalScrollBar()->setValue(scroll);
   return true;
 }
 
@@ -299,7 +324,10 @@ bool CalxEditor::event(QEvent *event) {
         cursorForPosition(viewport()->mapFromGlobal(help->globalPos()));
     cur.select(QTextCursor::WordUnderCursor);
     const QString word = cur.selectedText();
-    const QString tip = calx::hoverTextFor(word);
+    QString tip = calx::hoverTextFor(word);
+    if (tip.isEmpty()) {
+      tip = calx::userFunctionHover(userFuns_, word);
+    }
     if (!tip.isEmpty()) {
       QToolTip::showText(help->globalPos(), tip, this);
     } else {

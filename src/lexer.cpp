@@ -3,11 +3,11 @@
 #include "calc/value.hpp"
 
 #include <cctype>
-#include <cerrno>
+#include <charconv>
 #include <cmath>
-#include <cstdlib>
 #include <expected>
 #include <limits>
+#include <system_error>
 
 namespace calc {
 namespace {
@@ -51,6 +51,19 @@ struct Cursor {
 
 [[nodiscard]] bool is_digit(char c) {
   return std::isdigit(static_cast<unsigned char>(c)) != 0;
+}
+
+/// Незалежно від локалі (uk_UA використовує кому, strtold тоді ріже «1.0»).
+[[nodiscard]] bool parse_c_real(std::string_view text, long double &out) {
+  const char *first = text.data();
+  const char *last = text.data() + text.size();
+  long double value = 0;
+  const auto res = std::from_chars(first, last, value, std::chars_format::general);
+  if (res.ec != std::errc{} || res.ptr != last || !std::isfinite(value)) {
+    return false;
+  }
+  out = value;
+  return true;
 }
 
 void skip_whitespace_and_comments(Cursor &cur) {
@@ -187,12 +200,8 @@ void skip_whitespace_and_comments(Cursor &cur) {
 
   const std::string_view lexeme =
       cur.source.substr(begin, cur.index - begin - (imaginary ? 1 : 0));
-  std::string buf(lexeme);
-  errno = 0;
-  char *end = nullptr;
-  const long double parsed = std::strtold(buf.c_str(), &end);
-  if (end != buf.c_str() + buf.size() || errno == ERANGE ||
-      !std::isfinite(parsed)) {
+  long double parsed = 0;
+  if (!parse_c_real(lexeme, parsed)) {
     return std::unexpected(
         make_error(ErrorCode::InvalidNumber, start, "Некоректний літерал"));
   }
@@ -239,16 +248,12 @@ void skip_whitespace_and_comments(Cursor &cur) {
         const char after = cur.peek();
         if (!is_ident_start(after) && after != '.' && after != 'e' &&
             after != 'E') {
-          const std::string den_buf(
-              cur.source.substr(den_begin, cur.index - den_begin));
-          errno = 0;
-          char *den_end = nullptr;
-          const long double den_parsed =
-              std::strtold(den_buf.c_str(), &den_end);
-          if (den_end == den_buf.c_str() + den_buf.size() && errno != ERANGE &&
-              den_parsed >= 1.0L &&
-              den_parsed <= static_cast<long double>(
-                                std::numeric_limits<Integer>::max())) {
+        const std::string_view den_buf =
+            cur.source.substr(den_begin, cur.index - den_begin);
+        long double den_parsed = 0;
+        if (parse_c_real(den_buf, den_parsed) && den_parsed >= 1.0L &&
+            den_parsed <= static_cast<long double>(
+                              std::numeric_limits<Integer>::max())) {
             const auto den_int = static_cast<Integer>(den_parsed);
             if (static_cast<long double>(den_int) == den_parsed &&
                 den_int != 0) {
