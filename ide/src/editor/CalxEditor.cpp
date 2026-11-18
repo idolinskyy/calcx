@@ -3,6 +3,10 @@
 #include "util/CalxAssist.h"
 #include "util/CalxFormatter.h"
 
+#include "calc/lexer.hpp"
+#include "calc/loops.hpp"
+#include "calc/parser.hpp"
+
 #include <QAbstractItemView>
 #include <QCompleter>
 #include <QEvent>
@@ -72,6 +76,8 @@ CalxEditor::CalxEditor(QWidget *parent) : QPlainTextEdit(parent) {
           this, &CalxEditor::insertCompletion);
   connect(this, &CalxEditor::textChanged, this,
           &CalxEditor::refreshUserFunctions);
+  connect(this, &CalxEditor::textChanged, this,
+          &CalxEditor::refreshLoopWarnings);
 
   connect(this, &CalxEditor::blockCountChanged, this,
           &CalxEditor::updateLineNumberAreaWidth);
@@ -168,6 +174,19 @@ void CalxEditor::updateExtraSelections() {
       sel.cursor.clearSelection();
       extras.append(sel);
     }
+  }
+
+  for (const auto &warn : loopWarnings_) {
+    QTextBlock block = document()->findBlockByNumber(warn.first - 1);
+    if (!block.isValid()) {
+      continue;
+    }
+    QTextEdit::ExtraSelection sel;
+    sel.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+    sel.format.setUnderlineColor(QColor(QStringLiteral("#d29922")));
+    sel.cursor = QTextCursor(block);
+    sel.cursor.select(QTextCursor::LineUnderCursor);
+    extras.append(sel);
   }
 
   if (diagLine_ > 0) {
@@ -270,6 +289,40 @@ void CalxEditor::clearDiagnostics() {
   updateExtraSelections();
 }
 
+QString CalxEditor::loopWarningAt(int line1based) const {
+  QStringList lines;
+  for (const auto &warn : loopWarnings_) {
+    if (warn.first == line1based) {
+      lines.push_back(warn.second);
+    }
+  }
+  return lines.join(QStringLiteral("\n"));
+}
+
+void CalxEditor::refreshLoopWarnings() {
+  loopWarnings_.clear();
+  const auto source = toPlainText().toStdString();
+  if (source.empty()) {
+    updateExtraSelections();
+    return;
+  }
+  const auto lex = calc::tokenize(source);
+  if (lex.error.code != calc::ErrorCode::Ok) {
+    updateExtraSelections();
+    return;
+  }
+  auto program = calc::parse(lex.tokens);
+  if (!program) {
+    updateExtraSelections();
+    return;
+  }
+  for (const auto &warn : calc::find_loop_warnings(*program)) {
+    loopWarnings_.push_back({static_cast<int>(warn.pos.line),
+                             QString::fromStdString(warn.message)});
+  }
+  updateExtraSelections();
+}
+
 void CalxEditor::refreshUserFunctions() {
   userFuns_ = calc::scan_user_functions(toPlainText().toStdString());
   QStringList names;
@@ -327,6 +380,10 @@ bool CalxEditor::event(QEvent *event) {
     QString tip = calx::hoverTextFor(word);
     if (tip.isEmpty()) {
       tip = calx::userFunctionHover(userFuns_, word);
+    }
+    const QString loopTip = loopWarningAt(cur.blockNumber() + 1);
+    if (!loopTip.isEmpty()) {
+      tip = tip.isEmpty() ? loopTip : loopTip + QStringLiteral("\n\n") + tip;
     }
     if (!tip.isEmpty()) {
       QToolTip::showText(help->globalPos(), tip, this);

@@ -541,6 +541,10 @@ for (let n = 0; n < 3; n = n + 1) {
 }</pre>
 
 <p>Обхід масивів і записів зручніше через <a href="help:forin">for-in</a>.</p>
+<div class="callout warn"><div class="callout-title">Увага</div><p>Редактор підкреслює цикл, з якого не видно виходу:
+немає <code>break</code> / <code>return</code> і умова не змінюється,
+або єдиний вихід зривається, якщо параметр від'ємний
+(<code>abs(...) &lt;= eps * ...</code> без перевірки <code>eps</code>).</p></div>
 <nav class="related"><span class="related-label">Також дивіться</span><a href="help:forin">for-in</a> · <a href="help:arrays">Масиви</a></nav><nav class="pager"><a class="navprev" href="help:if">← if / else</a> <a class="navnext" href="help:forin">for-in →</a></nav>
 )HTML"},
     {"forin", "for-in", R"HTML(

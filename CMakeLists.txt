@@ -35,6 +35,7 @@ add_library(calc
   src/builtin.cpp
   src/constants.cpp
   src/repl_helpers.cpp
+  src/loops.cpp
 )
 target_include_directories(calc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(calc PRIVATE -Wall -Wextra -Wpedantic)
@@ -132,6 +133,7 @@ add_executable(calc_tests
   tests/test_format.cpp
   tests/test_if.cpp
   tests/test_loops.cpp
+  tests/test_loop_warnings.cpp
   tests/test_functions.cpp
   tests/test_collections.cpp
   tests/test_vm.cpp
@@ -141,6 +143,8 @@ add_executable(calc_tests
   src/repl.cpp
 )
 target_link_libraries(calc_tests PRIVATE calc doctest::doctest replxx::replxx)
+target_compile_definitions(calc_tests PRIVATE
+  "CALX_EXAMPLES_DIR=\"${CMAKE_SOURCE_DIR}/examples\"")
 target_compile_options(calc_tests PRIVATE
   -Wall -Wextra -Wpedantic
   -fsanitize=address,undefined

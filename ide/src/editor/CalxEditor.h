@@ -6,6 +6,8 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVector>
+#include <utility>
 #include <vector>
 
 class CalxHighlighter;
@@ -61,10 +63,13 @@ private:
   int diagLine_{0};
   int diagCol_{0};
   int diagLen_{0};
+  QVector<QPair<int, QString>> loopWarnings_;
 
   void updateExtraSelections();
   void showCompletions();
   void refreshUserFunctions();
+  void refreshLoopWarnings();
+  [[nodiscard]] QString loopWarningAt(int line1based) const;
   [[nodiscard]] bool isDark() const;
 
   bool dark_{false};
