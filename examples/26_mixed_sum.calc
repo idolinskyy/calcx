@@ -1,0 +1,14 @@
+// category: Дані
+// title: Сума лише з чисел
+// blurb: У кошику різні типи: до суми йдуть тільки числа.
+let bag = [120, true, 15.5, {note: 1}, 40, 1/2];
+let sum = 0;
+let count = 0;
+for (v in bag) {
+  if (is_number(v)) {
+    sum = sum + v;
+    ++count;
+  }
+}
+print("числових позицій: {}", count);
+print("сума {}", sum);

@@ -1,0 +1,14 @@
+// category: Гроші
+// title: Скільки місяців збирати
+// blurb: Щомісячний внесок і відсоток, поки сума не досягне цілі.
+let goal = 200000.0;
+let put = 8000.0;
+let r = 0.10 / 12;
+let balance = 0.0;
+let month = 0;
+while (balance < goal) {
+  balance = balance * (1 + r) + put;
+  ++month;
+}
+print("місяців: {}", month);
+print("на рахунку {:.2f} грн", balance);

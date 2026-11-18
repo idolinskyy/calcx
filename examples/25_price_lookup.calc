@@ -1,0 +1,27 @@
+// category: Дані
+// title: Ціна за кодом
+// blurb: Шукає позицію в прайсі і каже, якщо коду немає.
+let catalog = [
+  {code: 101, price: 1599},
+  {code: 214, price: 8750},
+  {code: 330, price: 420}
+];
+
+fun price_of(list, code) {
+  for (row in list) {
+    if (row.code == code) {
+      return row.price;
+    }
+  }
+  return -1;
+}
+
+let wanted = [214, 999, 101];
+for (code in wanted) {
+  let p = price_of(catalog, code);
+  if (p < 0) {
+    print("код {}: немає", code);
+  } else {
+    print("код {}: {}.{:02d} грн", code, int(p / 100), p % 100);
+  }
+}

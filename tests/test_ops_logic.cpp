@@ -138,6 +138,44 @@ TEST_CASE("unary plus requires numeric operand") {
   CHECK(run_code("print(+{a: 1});") == ErrorCode::InvalidOperation);
 }
 
+TEST_CASE("increment and decrement") {
+  CHECK(run_ok(R"(
+let i = 1;
+print(++i);
+print(i++);
+print(i);
+print(--i);
+let q = 1/2;
+++q;
+print(q);
+let r = 1.5;
+++r;
+print(r);
+let z = 1 + 2i;
+++z;
+print(z);
+let a = [10];
+a[0]++;
+print(a[0]);
+let p = {x: 3};
+++p.x;
+print(p.x);
+let b = [7];
+print(++b[0]);
+let q2 = {y: 8};
+print(q2.y--);
+print(q2.y);
+let s = 0;
+for (let k = 0; k < 3; ++k) { s = s + k; }
+print(s);
+fun bump(n) { ++n; return n; }
+print(bump(4));
+)") == "2\n2\n3\n2\n3/2\n2.5\n2 + 2i\n11\n4\n8\n8\n7\n3\n5\n");
+  CHECK(run_code("let i = true; ++i;") == ErrorCode::InvalidOperation);
+  CHECK(run_code("let a = [1]; ++a;") == ErrorCode::InvalidOperation);
+  CHECK(run_code("++1;") == ErrorCode::UnexpectedToken);
+}
+
 TEST_CASE("boolean keywords vs identifiers") {
   CHECK(run_ok("print(true);") == "true\n");
   CHECK(run_ok("print(false);") == "false\n");

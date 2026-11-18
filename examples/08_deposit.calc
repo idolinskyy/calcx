@@ -1,0 +1,11 @@
+// category: Гроші
+// title: Депозит зі щомісячним відсотком
+// blurb: Скільки буде на рахунку через кілька років.
+let principal = 100000.0;
+let annual = 0.135;
+let per_year = 12;
+let years = 3;
+let amount = principal * pow(1 + annual / per_year, per_year * years);
+print("було   {:.2f} грн", principal);
+print("стане  {:.2f} грн", amount);
+print("дохід  {:.2f} грн", amount - principal);

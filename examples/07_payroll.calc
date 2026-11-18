@@ -1,0 +1,15 @@
+// category: Гроші
+// title: Зарплата з понаднормовими
+// blurb: Перші 40 годин за ставкою, решта — з коефіцієнтом 1.5.
+let hours = 46;
+let rate = 18500;
+let regular = hours;
+let extra = 0;
+if (hours > 40) {
+  regular = 40;
+  extra = hours - 40;
+}
+let pay = regular * rate + int(round(extra * rate * 3 / 2));
+print("звичайні години: {}", regular);
+print("понаднормові: {}", extra);
+print("до виплати {}.{:02d} грн", int(pay / 100), pay % 100);

@@ -1,0 +1,23 @@
+// category: Дані
+// title: Оцінки по діапазонах
+// blurb: Скільки робіт нижче 60, у кожній десятці і від 90.
+let scores = [55, 72, 91, 88, 64, 40, 99, 76, 83, 59];
+let bins = [0, 0, 0, 0, 0];
+for (s in scores) {
+  let b = 0;
+  if (s >= 90) {
+    b = 4;
+  } else if (s >= 80) {
+    b = 3;
+  } else if (s >= 70) {
+    b = 2;
+  } else if (s >= 60) {
+    b = 1;
+  }
+  bins[b] = bins[b] + 1;
+}
+print("до 59:  {}", bins[0]);
+print("60–69:  {}", bins[1]);
+print("70–79:  {}", bins[2]);
+print("80–89:  {}", bins[3]);
+print("90–100: {}", bins[4]);

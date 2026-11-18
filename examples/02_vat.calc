@@ -1,0 +1,9 @@
+// category: Гроші
+// title: ПДВ 20%
+// blurb: Додає податок до суми без ПДВ і показує суму з податком.
+let net = 125000;
+let vat = int(round(net * 20 / 100));
+let gross = net + vat;
+print("без ПДВ  {}.{:02d} грн", int(net / 100), net % 100);
+print("ПДВ      {}.{:02d} грн", int(vat / 100), vat % 100);
+print("з ПДВ    {}.{:02d} грн", int(gross / 100), gross % 100);

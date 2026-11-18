@@ -1,0 +1,10 @@
+// category: Гроші
+// title: Точка беззбитковості
+// blurb: Скільки штук продати, щоб покрити постійні витрати.
+let fixed = 84000.0;
+let price = 320.0;
+let variable = 185.0;
+let units = int(ceil(fixed / (price - variable)));
+print("поріг {} шт.", units);
+print("виручка {:.2f} грн", units * price);
+print("прибуток після порогу з однієї шт. {:.2f} грн", price - variable);

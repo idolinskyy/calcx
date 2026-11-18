@@ -1,0 +1,11 @@
+// category: Фізика
+// title: Маятник
+// blurb: Період для заданої довжини і довжина під період 2 с.
+fun period(length) {
+  return 2 * pi * sqrt(length / g);
+}
+print("1 м: {:.3f} с", period(1));
+print("25 см: {:.3f} с", period(0.25));
+let want = 2.0;
+let length = g * (want / (2 * pi)) ** 2;
+print("для {:.0f} с потрібно {:.3f} м", want, length);

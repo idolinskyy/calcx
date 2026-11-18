@@ -1,0 +1,16 @@
+// category: Дані
+// title: Зважена оцінка
+// blurb: Середнє з вагами: контрольна важить більше за домашню.
+let parts = [
+  {score: 88, weight: 2},
+  {score: 74, weight: 3},
+  {score: 91, weight: 5}
+];
+let sw = 0;
+let w = 0;
+for (p in parts) {
+  sw = sw + p.score * p.weight;
+  w = w + p.weight;
+}
+print("зважена оцінка {:.1f}", sw / w);
+print("сума ваг {}", w);

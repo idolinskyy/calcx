@@ -1,0 +1,18 @@
+// category: Розрахунки
+// title: Скільки наборів
+// blurb: Скільки способів вибрати кілька товарів із прайсу.
+fun choose(n, k) {
+  if (k > n - k) {
+    k = n - k;
+  }
+  let r = 1;
+  let i = 1;
+  while (i <= k) {
+    r = int(round(r * (n - k + i) / i));
+    ++i;
+  }
+  return r;
+}
+print("3 з 10: {}", choose(10, 3));
+print("5 з 20: {}", choose(20, 5));
+print("2 з 8: {}", choose(8, 2));

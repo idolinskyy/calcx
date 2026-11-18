@@ -1,0 +1,17 @@
+// category: Розрахунки
+// title: Скоротити співвідношення
+// blurb: Найбільший спільний дільник і частка фарби 84:126.
+fun gcd(a, b) {
+  while (b != 0) {
+    let t = a % b;
+    a = b;
+    b = t;
+  }
+  return abs(a);
+}
+let num = 84;
+let den = 126;
+let g = gcd(num, den);
+print("НСД {}", g);
+print("частка {}", rational(num, den));
+print("на {} частин по {} і {}", g, int(num / g), int(den / g));

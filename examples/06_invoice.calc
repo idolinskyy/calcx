@@ -1,0 +1,20 @@
+// category: Гроші
+// title: Чек з позицій
+// blurb: Кількість на ціну, ПДВ і підсумок по кількох рядках.
+let lines = [
+  {qty: 2, price: 4599},
+  {qty: 1, price: 12900},
+  {qty: 3, price: 875}
+];
+let net = 0;
+for (line in lines) {
+  let row = line.qty * line.price;
+  net = net + row;
+  print("{} x {}.{:02d} = {}.{:02d}",
+        line.qty, int(line.price / 100), line.price % 100,
+        int(row / 100), row % 100);
+}
+let vat = int(round(net * 20 / 100));
+print("без ПДВ  {}.{:02d}", int(net / 100), net % 100);
+print("ПДВ      {}.{:02d}", int(vat / 100), vat % 100);
+print("разом    {}.{:02d}", int((net + vat) / 100), (net + vat) % 100);

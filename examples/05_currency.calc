@@ -1,0 +1,11 @@
+// category: Гроші
+// title: Обмін валюти
+// blurb: Переводить готівку в гривні за курсом у копійках за одиницю.
+let usd = 4150;
+let eur = 4520;
+let dollars = 250;
+let euros = 80;
+let kop = dollars * usd + euros * eur;
+print("{} USD за {:.2f}", dollars, usd / 100);
+print("{} EUR за {:.2f}", euros, eur / 100);
+print("разом {}.{:02d} грн", int(kop / 100), kop % 100);

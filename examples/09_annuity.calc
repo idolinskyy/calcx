@@ -1,0 +1,16 @@
+// category: Гроші
+// title: Щомісячний платіж
+// blurb: Ануїтет за сумою, річною ставкою і строком у місяцях.
+fun monthly(principal, annual, months) {
+  let r = annual / 12;
+  if (r == 0) {
+    return principal / months;
+  }
+  let q = pow(1 + r, months);
+  return principal * r * q / (q - 1);
+}
+
+let years = 20;
+let pay = monthly(1500000, 0.12, years * 12);
+print("платіж {:.2f} грн", pay);
+print("за весь строк {:.2f} грн", pay * years * 12);

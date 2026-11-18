@@ -584,6 +584,25 @@ vm_step(VmState &st, const Chunk &chunk, std::ostream &out) {
       break;
     }
 
+    case OpCode::Dup: {
+      if (!need_stack(1)) {
+        return fail(ErrorCode::UnexpectedToken, "Порожній стек (Dup)");
+      }
+      st.stack.push_back(st.stack.back());
+      break;
+    }
+
+    case OpCode::Dup2: {
+      if (!need_stack(2)) {
+        return fail(ErrorCode::UnexpectedToken, "Недостатньо значень (Dup2)");
+      }
+      const auto &top = st.stack.back();
+      const auto &below = st.stack[st.stack.size() - 2];
+      st.stack.push_back(below);
+      st.stack.push_back(top);
+      break;
+    }
+
     case OpCode::MakeIter: {
       auto mode = read_u8();
       if (!mode) {

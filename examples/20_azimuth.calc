@@ -1,0 +1,9 @@
+// category: Виміри
+// title: Напрямок на точку
+// blurb: Відстань і кут від осі X між двома координатами.
+let here = {x: 100.0, y: 250.0};
+let there = {x: 160.0, y: 280.0};
+let dx = there.x - here.x;
+let dy = there.y - here.y;
+print("відстань {:.1f} м", hypot(dx, dy));
+print("кут від осі X {:.1f}°", deg(atan2(dy, dx)));

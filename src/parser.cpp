@@ -157,6 +157,40 @@ private:
     return i < tokens_.size() && tokens_[i].kind == TokenKind::Equal;
   }
 
+  /// `++x` / `--x` або `x++` / `a[i]--` (без `=`).
+  [[nodiscard]] bool looks_like_update() const {
+    if (check(TokenKind::PlusPlus) || check(TokenKind::MinusMinus)) {
+      return true;
+    }
+    if (!check(TokenKind::Identifier)) {
+      return false;
+    }
+    std::size_t i = current_ + 1;
+    while (i < tokens_.size()) {
+      if (tokens_[i].kind == TokenKind::LBracket) {
+        int depth = 1;
+        ++i;
+        while (i < tokens_.size() && depth > 0) {
+          if (tokens_[i].kind == TokenKind::LBracket) {
+            ++depth;
+          } else if (tokens_[i].kind == TokenKind::RBracket) {
+            --depth;
+          }
+          ++i;
+        }
+        continue;
+      }
+      if (tokens_[i].kind == TokenKind::Dot && i + 1 < tokens_.size() &&
+          tokens_[i + 1].kind == TokenKind::Identifier) {
+        i += 2;
+        continue;
+      }
+      break;
+    }
+    return i < tokens_.size() && (tokens_[i].kind == TokenKind::PlusPlus ||
+                                  tokens_[i].kind == TokenKind::MinusMinus);
+  }
+
   [[nodiscard]] std::expected<StmtPtr, Diagnostic>
   parse_let(bool require_semi) {
     const SourcePos pos = previous().pos;
@@ -472,15 +506,23 @@ private:
 
     StmtPtr step;
     if (!check(TokenKind::RParen)) {
-      if (!looks_like_assignment()) {
+      if (looks_like_update()) {
+        const SourcePos step_pos = peek().pos;
+        auto expr = parse_expression();
+        if (!expr) {
+          return std::unexpected(expr.error());
+        }
+        step = make_stmt(ExprStmt{std::move(*expr), step_pos});
+      } else if (looks_like_assignment()) {
+        auto asg = parse_assign(/*require_semi=*/false);
+        if (!asg) {
+          return std::unexpected(asg.error());
+        }
+        step = std::move(*asg);
+      } else {
         return std::unexpected(error(ErrorCode::UnexpectedToken, peek().pos,
-                                     "Очікується присвоєння у step for"));
+                                     "Очікується присвоєння або ++/-- у step for"));
       }
-      auto asg = parse_assign(/*require_semi=*/false);
-      if (!asg) {
-        return std::unexpected(asg.error());
-      }
-      step = std::move(*asg);
     }
 
     auto rparen =
@@ -660,6 +702,18 @@ private:
   }
 
   [[nodiscard]] std::expected<ExprPtr, Diagnostic> parse_unary() {
+    if (check(TokenKind::PlusPlus) || check(TokenKind::MinusMinus)) {
+      const Token op = advance();
+      auto operand = parse_unary();
+      if (!operand) {
+        return operand;
+      }
+      auto node = std::make_unique<Expr>();
+      node->node = UpdateExpr{std::move(*operand),
+                              op.kind == TokenKind::PlusPlus,
+                              /*prefix=*/true, op.pos};
+      return node;
+    }
     if (check(TokenKind::Plus) || check(TokenKind::Minus) ||
         check(TokenKind::Not)) {
       const Token op = advance();
@@ -729,6 +783,14 @@ private:
                             field->pos, pos};
         expr = std::move(n);
         continue;
+      }
+      if (check(TokenKind::PlusPlus) || check(TokenKind::MinusMinus)) {
+        const Token op = advance();
+        auto n = std::make_unique<Expr>();
+        n->node = UpdateExpr{std::move(*expr), op.kind == TokenKind::PlusPlus,
+                             /*prefix=*/false, op.pos};
+        expr = std::move(n);
+        break;
       }
       break;
     }

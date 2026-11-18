@@ -3,13 +3,14 @@
 #include "calc/builtin.hpp"
 #include "calc/constants.hpp"
 
-#include <QCloseEvent>
 #include <QClipboard>
+#include <QCloseEvent>
 #include <QDialogButtonBox>
 #include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QPainter>
@@ -17,11 +18,10 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QSplitter>
-#include <QTextDocument>
 #include <QTextCursor>
+#include <QTextDocument>
 #include <QTimer>
 #include <QUrl>
-#include <QHBoxLayout>
 #include <QVBoxLayout>
 
 #include <string_view>
@@ -68,7 +68,7 @@ constexpr HelpSection kSections[] = {
 <li>Зверху — меню й панель запуску / дебагу.</li>
 </ul>
 
-<div class="callout tip"><div class="callout-title">Порада</div><p>Консольний <code>calx</code> — окрема програма з тією ж мовою. Історія інтерактиву спільна: <code>~/.calx_history</code>. Почніть із розділу <a href="help:start">З чого почати</a>.</p></div>
+<div class="callout tip"><div class="callout-title">Порада</div><p>Готові програми — у меню <b>Файл → Приклади…</b> (те саме в меню Довідка). Відкрийте приклад у редакторі й запустіть <b>Ctrl+R</b>. Консольний <code>calx</code> виконує ті самі файли з каталогу <code>examples/</code>.</p></div>
 
 <div class="callout ok"><div class="callout-title">На замітку</div><p>Натисніть <b>F1</b> будь-коли, щоб знову відкрити або підняти довідку.</p></div>
 <nav class="related"><span class="related-label">Також дивіться</span><a href="help:start">Старт</a> · <a href="help:editor">Редактор</a> · <a href="help:builtins">Builtins</a></nav><nav class="pager"><span></span> <a class="navnext" href="help:start">З чого почати →</a></nav>
@@ -99,6 +99,7 @@ sum = 58.77</pre>
 <li><b>Ctrl+I</b> — <a href="help:format">форматувати</a> код у редакторі.</li>
 <li>Опційно: Редагування → Форматувати при збереженні.</li>
 <li><b>F1</b> — ця довідка.</li>
+<li><b>Файл → Приклади…</b> — готові програми: рахунки, виміри, прайс, фізика. Кнопка «Відкрити в редакторі», далі <b>Ctrl+R</b>.</li>
 </ul>
 
 <h2>Що вивчати далі</h2>
@@ -408,7 +409,13 @@ name = новий_вираз;</pre>
 
 <pre>let i = 0;
 i = i + 1;
-print(i);  // 1</pre>
+++i;
+print(i++);  // 2, після цього i дорівнює 3</pre>
+
+<p><code>++x</code> і <code>--x</code> змінюють число на 1 і лишають нове значення.
+<code>x++</code> і <code>x--</code> лишають старе, а змінну все одно зсувають.
+Ціль — змінна, <code>a[i]</code> або <code>rec.field</code>. Підходить ціле,
+дріб, дійсне і комплексне. У <code>for</code> крок може бути <code>++i</code>.</p>
 
 <p>Блоки <code>{ }</code> у <code>if</code> / циклах створюють вкладені області
 видимості для нових <code>let</code>.</p>
@@ -425,6 +432,10 @@ print("формат", аргументи...);</pre>
 <li>Без рядка формату — друкує значення й переводить рядок.</li>
 <li>З форматом: плейсхолдери <code>{}</code>, <code>{0}</code>,
 <code>{:.2f}</code>, <code>{:d}</code>, <code>{:x}</code>.</li>
+<li>Ширина й кількість знаків після коми можуть бути окремим аргументом —
+ціле число від нуля: <code>{:{}}</code>, <code>{:.{}f}</code>,
+<code>{:{}.{}f}</code>. Індекс можна вказати й там:
+<code>{1:.{0}f}</code>.</li>
 <li>Літеральні дужки в тексті — подвоїти: <code>{{</code> і <code>}}</code>.</li>
 <li>Не змішуйте автоматичну (<code>{}</code>) і ручну (<code>{0}</code>)
 індексацію в одному рядку формату.</li>
@@ -434,7 +445,8 @@ print("формат", аргументи...);</pre>
 
 <pre>print("pi ≈ {:.4f}", pi);
 print("{1} після {0}", 10, 20);
-print("hex={:x}", 255);</pre>
+print("hex={:x}", 255);
+print("до {} знака — {:.{}f}", 2, 1.25, 2);</pre>
 
 <p>Повний список математичних функцій для аргументів — у
 <a href="help:builtins">Builtins</a>; константи на кшталт <code>pi</code> —
@@ -1419,7 +1431,6 @@ NOTICE поруч із програмою або в дереві встанов�
 
 } // namespace
 
-
 namespace {
 
 [[nodiscard]] QString htmlUnescape(QString s) {
@@ -1595,8 +1606,10 @@ struct HighlightSpan {
 QString HelpDialog::pageChrome(const QString &body_html) {
   return QStringLiteral(
              "<!DOCTYPE html><html><head><meta charset='utf-8'><style>"
-             "body{font-family:'Source Sans 3','Noto Sans','Segoe UI',sans-serif;"
-             "font-size:15.5px;line-height:1.62;color:#1c2128;background:#f7f8fa;"
+             "body{font-family:'Source Sans 3','Noto Sans','Segoe "
+             "UI',sans-serif;"
+             "font-size:15.5px;line-height:1.62;color:#1c2128;background:#"
+             "f7f8fa;"
              "margin:0;padding:1.35em 1.75em 2.4em;}"
              "p.lead{font-size:1.05em;color:#4a5563;margin:0 0 1.1em;"
              "line-height:1.55;max-width:42em;}"
@@ -1610,7 +1623,8 @@ QString HelpDialog::pageChrome(const QString &body_html) {
              "p,li,td{color:#1c2128;}"
              "ul,ol{padding-left:1.35em;margin:0.45em 0 0.85em;}"
              "li{margin:0.42em 0;}"
-             "table.grid,table.keys{border-collapse:collapse;margin:0.75em 0 1em;"
+             "table.grid,table.keys{border-collapse:collapse;margin:0.75em 0 "
+             "1em;"
              "width:100%;font-size:0.97em;}"
              "table.grid td,table.keys td{padding:0.48em 0.85em 0.48em 0;"
              "vertical-align:top;}"
@@ -1620,7 +1634,8 @@ QString HelpDialog::pageChrome(const QString &body_html) {
              "font-size:0.86em;border:1px solid #d0d5dd;"
              "border-bottom-width:2px;border-radius:4px;padding:0.1em 0.45em;"
              "color:#1a2330;}"
-             /* inline code: без background — у Qt фон розтягує рядок на всю ширину */
+             /* inline code: без background — у Qt фон розтягує рядок на всю
+                ширину */
              ".ic{font-family:'JetBrains Mono','Noto Sans Mono',monospace;"
              "font-size:0.92em;color:#0550ae;font-weight:600;}"
              "a{color:#1a6fa8;text-decoration:none;border-bottom:1px solid "
@@ -1649,31 +1664,39 @@ QString HelpDialog::pageChrome(const QString &body_html) {
              ".fn-body p{margin:0.3em 0;}"
              ".ex-label{font-size:0.7em;font-weight:700;letter-spacing:0.05em;"
              "text-transform:uppercase;color:#5a6a7c;margin:0.55em 0 0.2em;}"
-             ".toc{background:#eef2f6;border:1px solid #d9e0e8;border-radius:8px;"
+             ".toc{background:#eef2f6;border:1px solid "
+             "#d9e0e8;border-radius:8px;"
              "padding:0.85em 1.1em;margin:0.9em 0 1.2em;}"
-             ".toc-title{font-size:0.72em;font-weight:700;letter-spacing:0.06em;"
+             ".toc-title{font-size:0.72em;font-weight:700;letter-spacing:0."
+             "06em;"
              "text-transform:uppercase;color:#5a6a7c;margin-bottom:0.35em;}"
              ".toc ul{margin:0.2em 0;padding-left:1.2em;}"
              ".toc li{margin:0.28em 0;}"
-             ".related{margin:1.75em 0 0;padding:0.9em 1.05em;background:#eef2f6;"
+             ".related{margin:1.75em 0 0;padding:0.9em "
+             "1.05em;background:#eef2f6;"
              "border-radius:8px;border:1px solid #d9e0e8;line-height:1.7;}"
              ".related-label{font-size:0.72em;font-weight:700;"
              "letter-spacing:0.06em;text-transform:uppercase;color:#5a6a7c;"
              "margin:0 0 0.45em 0;}"
              ".related-links{margin:0;color:#1c2128;}"
              ".related-links a{margin:0 0.1em;}"
-             "table.pager{width:100%;border-collapse:collapse;margin:1.35em 0 0.4em;"
+             "table.pager{width:100%;border-collapse:collapse;margin:1.35em 0 "
+             "0.4em;"
              "border-top:1px solid #d0d5dd;}"
-             "table.pager td{border:none;padding:1em 0 0.25em;vertical-align:middle;"
+             "table.pager td{border:none;padding:1em 0 "
+             "0.25em;vertical-align:middle;"
              "font-size:0.95em;}"
              "table.pager td.pager-prev{text-align:left;width:50%;}"
              "table.pager td.pager-next{text-align:right;width:50%;}"
-             "a.navprev,a.navnext{color:#0d5690;border-bottom:none;font-weight:650;"
+             "a.navprev,a.navnext{color:#0d5690;border-bottom:none;font-weight:"
+             "650;"
              "padding:0.35em 0.55em;background:#e8eef5;border-radius:6px;}"
-             /* картки коду — растрові img (QTextBrowser не вміє нормально CSS width/radius) */
+             /* картки коду — растрові img (QTextBrowser не вміє нормально CSS
+                width/radius) */
              "p.codeframe{text-align:center;margin:1.15em 0 1.35em;}"
              "p.codeframe img{border:none;}"
-             "p.codeframe a.copybtn{color:#1a6fa8;border-bottom:none;font-size:12px;"
+             "p.codeframe "
+             "a.copybtn{color:#1a6fa8;border-bottom:none;font-size:12px;"
              "font-weight:600;margin-left:0.75em;}"
              "p.codeframe .codeframe-meta{color:#6a737d;font-size:11px;"
              "font-family:'JetBrains Mono','Noto Sans Mono',monospace;"
@@ -1749,7 +1772,8 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
       const int logical_w = qRound(static_cast<qreal>(card.width()) / pr);
       const int logical_h = qRound(static_cast<qreal>(card.height()) / pr);
 
-      // Клік по всій картці → копіювання (кнопка намальована в шапці зображення).
+      // Клік по всій картці → копіювання (кнопка намальована в шапці
+      // зображення).
       out += QStringLiteral("<p class=\"codeframe\" align=\"center\">"
                             "<a href=\"copy:");
       out += QString::number(idx);
@@ -1781,7 +1805,8 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
       }
       out += html.mid(pos, open - pos);
       const qsizetype after_open = open + open_tag.size();
-      const qsizetype close = html.indexOf(QStringLiteral("</nav>"), after_open);
+      const qsizetype close =
+          html.indexOf(QStringLiteral("</nav>"), after_open);
       if (close < 0) {
         out += html.mid(open);
         break;
@@ -1790,10 +1815,9 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
       if (inner.startsWith(label)) {
         inner = inner.mid(label.size());
       }
-      out += QStringLiteral(
-          "<div class=\"related\">"
-          "<p class=\"related-label\">Також дивіться</p>"
-          "<p class=\"related-links\">");
+      out += QStringLiteral("<div class=\"related\">"
+                            "<p class=\"related-label\">Також дивіться</p>"
+                            "<p class=\"related-links\">");
       out += inner.trimmed();
       out += QStringLiteral("</p></div>");
       pos = close + 6;
@@ -1815,7 +1839,8 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
       }
       out += html.mid(pos, open - pos);
       const qsizetype after_open = open + open_tag.size();
-      const qsizetype close = html.indexOf(QStringLiteral("</nav>"), after_open);
+      const qsizetype close =
+          html.indexOf(QStringLiteral("</nav>"), after_open);
       if (close < 0) {
         out += html.mid(open);
         break;
@@ -1824,7 +1849,8 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
 
       QString prev_html;
       QString next_html;
-      const qsizetype prev_i = inner.indexOf(QStringLiteral("class=\"navprev\""));
+      const qsizetype prev_i =
+          inner.indexOf(QStringLiteral("class=\"navprev\""));
       if (prev_i >= 0) {
         qsizetype a0 = inner.lastIndexOf(QLatin1Char('<'), prev_i);
         qsizetype a1 = inner.indexOf(QStringLiteral("</a>"), prev_i);
@@ -1832,7 +1858,8 @@ QString HelpDialog::enrichHtml(const QString &body_html) {
           prev_html = inner.mid(a0, a1 + 4 - a0);
         }
       }
-      const qsizetype next_i = inner.indexOf(QStringLiteral("class=\"navnext\""));
+      const qsizetype next_i =
+          inner.indexOf(QStringLiteral("class=\"navnext\""));
       if (next_i >= 0) {
         qsizetype a0 = inner.lastIndexOf(QLatin1Char('<'), next_i);
         qsizetype a1 = inner.indexOf(QStringLiteral("</a>"), next_i);
@@ -2002,7 +2029,6 @@ QImage HelpDialog::renderCodeCard(const QString &plain_code, qreal dpr) const {
   return img;
 }
 
-
 HelpDialog::HelpDialog(QWidget *parent) : QWidget(parent, Qt::Window) {
   setAttribute(Qt::WA_DeleteOnClose, false);
   setWindowFlag(Qt::Tool, false);
@@ -2121,20 +2147,20 @@ void HelpDialog::finishSetup(int initial_row) {
 
   nav_ = new QListWidget(this);
   nav_->setFixedWidth(228);
-  nav_->setStyleSheet(QStringLiteral(
-      "QListWidget {"
-      "  background:#151920; color:#c5ccd6; border:none;"
-      "  outline:none; font-size:13px; padding:4px 0 8px;"
-      "}"
-      "QListWidget::item {"
-      "  padding:7px 14px; margin:1px 8px; border-radius:6px;"
-      "}"
-      "QListWidget::item:selected {"
-      "  background:#2f6f94; color:#ffffff; font-weight:600;"
-      "}"
-      "QListWidget::item:hover:!selected {"
-      "  background:#252b36;"
-      "}"));
+  nav_->setStyleSheet(
+      QStringLiteral("QListWidget {"
+                     "  background:#151920; color:#c5ccd6; border:none;"
+                     "  outline:none; font-size:13px; padding:4px 0 8px;"
+                     "}"
+                     "QListWidget::item {"
+                     "  padding:7px 14px; margin:1px 8px; border-radius:6px;"
+                     "}"
+                     "QListWidget::item:selected {"
+                     "  background:#2f6f94; color:#ffffff; font-weight:600;"
+                     "}"
+                     "QListWidget::item:hover:!selected {"
+                     "  background:#252b36;"
+                     "}"));
   for (const HelpSection &section : kSections) {
     nav_->addItem(QString::fromUtf8(section.title));
   }

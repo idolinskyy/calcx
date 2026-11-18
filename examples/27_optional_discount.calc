@@ -1,0 +1,12 @@
+// category: Дані
+// title: Знижка, якщо вона є
+// blurb: Поле discount не обов'язкове: сума рахується і без нього.
+fun due(order) {
+  let sum = order.qty * order.price;
+  if (order has discount) {
+    sum = sum - order.discount;
+  }
+  return sum;
+}
+print("без знижки {}", due({qty: 3, price: 1000}));
+print("зі знижкою {}", due({qty: 3, price: 1000, discount: 500}));

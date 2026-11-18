@@ -353,6 +353,22 @@ private:
             printExpr(*node.object, 9, false);
             write(".");
             write(QString::fromStdString(node.field));
+          } else if constexpr (std::is_same_v<T, calc::UpdateExpr>) {
+            constexpr int prec = 9;
+            const bool paren = prec < parent_prec;
+            if (paren) {
+              write("(");
+            }
+            if (node.prefix) {
+              write(node.increment ? "++" : "--");
+              printExpr(*node.target, prec, true);
+            } else {
+              printExpr(*node.target, prec, false);
+              write(node.increment ? "++" : "--");
+            }
+            if (paren) {
+              write(")");
+            }
           } else if constexpr (std::is_same_v<T, calc::HasExpr>) {
             // Між and (2) і == (3): a and b has x → a and (b has x)
             constexpr int prec = 3;

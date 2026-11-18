@@ -1,0 +1,22 @@
+// category: Гроші
+// title: Знижка за суму
+// blurb: 5%, 10% або 15% залежно від суми чека.
+fun payable(sum) {
+  let rate = 0;
+  if (sum >= 500000) {
+    rate = 15;
+  } else if (sum >= 200000) {
+    rate = 10;
+  } else if (sum >= 100000) {
+    rate = 5;
+  }
+  let off = int(round(sum * rate / 100));
+  return sum - off;
+}
+
+let sums = [75000, 150000, 250000, 640000];
+for (sum in sums) {
+  let pay = payable(sum);
+  print("сума {}.{:02d}  до сплати {}.{:02d}",
+        int(sum / 100), sum % 100, int(pay / 100), pay % 100);
+}

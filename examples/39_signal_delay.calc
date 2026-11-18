@@ -1,0 +1,8 @@
+// category: Фізика
+// title: Затримка сигналу
+// blurb: Скільки йде світло на задану відстань.
+let km = 12000.0;
+let seconds = km * 1000 / c;
+print("відстань {} км", km);
+print("затримка {:.4f} с", seconds);
+print("це {:.1f} мс", seconds * 1000);

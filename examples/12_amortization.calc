@@ -1,0 +1,20 @@
+// category: Гроші
+// title: Графік погашення
+// blurb: Перші платежі і останній: відсоток, тіло, залишок.
+let principal = 200000.0;
+let months = 24;
+let r = 0.15 / 12;
+let q = pow(1 + r, months);
+let pay = principal * r * q / (q - 1);
+let balance = principal;
+print("платіж {:.2f} грн", pay);
+print("міс.      платіж    відсоток        тіло     залишок");
+for (let m = 1; m <= months; ++m) {
+  let interest = balance * r;
+  let body = pay - interest;
+  balance = balance - body;
+  if (m <= 3 or m == months) {
+    print("{:>4} {:>12.2f} {:>12.2f} {:>12.2f} {:>12.2f}",
+          m, pay, interest, body, balance);
+  }
+}

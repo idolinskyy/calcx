@@ -23,6 +23,8 @@ add_executable(calx-ide
   src/util/CalxAssist.cpp
   src/util/CalxFormatter.cpp
   src/help/HelpDialog.cpp
+  src/examples/ExamplesDialog.cpp
+  ../examples/examples.qrc
 )
 
 target_include_directories(calx-ide PRIVATE

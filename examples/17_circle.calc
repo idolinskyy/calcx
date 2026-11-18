@@ -1,0 +1,10 @@
+// category: Виміри
+// title: Кругла стільниця
+// blurb: Довжина кромки і площа за діаметром, плюс запас на підгин.
+let diameter = 1.2;
+let hem = 0.05;
+let r = diameter / 2;
+let cut = diameter + 2 * hem;
+print("кромка {:.3f} м", 2 * pi * r);
+print("площа {:.3f} м²", pi * r * r);
+print("викроїти квадрат {:.2f} x {:.2f} м", cut, cut);

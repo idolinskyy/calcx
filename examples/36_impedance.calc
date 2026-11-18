@@ -1,0 +1,12 @@
+// category: Електрика
+// title: Котушка в колі
+// blurb: Повний опір, фаза і струм для R і L на 50 Гц.
+let f = 50.0;
+let r = 8.0;
+let l = 0.02;
+let x = 2 * pi * f * l;
+let z = r + x * i;
+print("Z = {}", z);
+print("|Z| {:.2f} Ом", abs(z));
+print("фаза {:.1f}°", deg(arg(z)));
+print("струм від 12 В: {:.3f} А", 12 / abs(z));

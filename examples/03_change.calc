@@ -1,0 +1,19 @@
+// category: Гроші
+// title: Здача купюрами
+// blurb: Розкладає здачу на купюри і монети від більших до менших.
+let paid = 50000;
+let due = 34740;
+let left = paid - due;
+let coins = [50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 10, 1];
+print("здача {}.{:02d} грн", int(left / 100), left % 100);
+for (coin in coins) {
+  let n = int(left / coin);
+  if (n > 0) {
+    left = left - n * coin;
+    if (coin >= 100) {
+      print("{} x {} грн", n, int(coin / 100));
+    } else {
+      print("{} x {} коп.", n, coin);
+    }
+  }
+}

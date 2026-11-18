@@ -78,6 +78,14 @@ struct FieldExpr {
   SourcePos pos;
 };
 
+/// `++x` / `x++` / `--x` / `x--`. Ціль — змінна, `a[i]` або `rec.field`.
+struct UpdateExpr {
+  ExprPtr target;
+  bool increment{true};
+  bool prefix{true};
+  SourcePos pos;
+};
+
 /// Перевірка наявності поля: `record has field`.
 struct HasExpr {
   ExprPtr object;
@@ -88,7 +96,7 @@ struct HasExpr {
 
 struct Expr {
   std::variant<LiteralExpr, VarExpr, UnaryExpr, BinaryExpr, CallExpr, ArrayExpr,
-               RecordExpr, IndexExpr, FieldExpr, HasExpr>
+               RecordExpr, IndexExpr, FieldExpr, UpdateExpr, HasExpr>
       node;
 };
 

@@ -45,6 +45,28 @@ TEST_CASE("analyze_format auto and manual indices") {
 
   CHECK_FALSE(analyze_format("{} {0}")); // змішування
   CHECK_FALSE(analyze_format("{"));      // незакритий
+
+  auto prec = analyze_format("{:.{}f}");
+  REQUIRE(prec);
+  CHECK(prec->arg_count == 2);
+
+  auto both = analyze_format("{:{}.{}f}");
+  REQUIRE(both);
+  CHECK(both->arg_count == 3);
+
+  auto manual = analyze_format("{1:.{0}f}");
+  REQUIRE(manual);
+  CHECK(manual->arg_count == 2);
+
+  auto phrase = analyze_format("до {} — {:.{}f}");
+  REQUIRE(phrase);
+  CHECK(phrase->arg_count == 3);
+
+  CHECK_FALSE(analyze_format("{:.{}f} {0}"));
+  CHECK_FALSE(analyze_format("{0:.{}f}"));
+  CHECK_FALSE(analyze_format("{:.{5.2}f}"));
+  CHECK_FALSE(analyze_format("{:{:{}}}"));
+  CHECK_FALSE(analyze_format("{:.{}"));
 }
 
 TEST_CASE("format_print specs like std::format") {
@@ -75,4 +97,19 @@ TEST_CASE("e2e print formatting") {
   CHECK(run_ok("print(\"half={}\", 1/2);") == "half=1/2\n");
   CHECK(run_ok("print(\"half={:.1f}\", 1/2);") == "half=0.5\n");
   CHECK(run_ok("print(\"ok={}\", true);") == "ok=true\n");
+  CHECK(run_ok("print(\"{:.{}f}\", 1.5, 3);") == "1.500\n");
+  CHECK(run_ok("print(\"{:.{}f}\", 1.5, 0);") == "2\n");
+  CHECK(run_ok("print(\"{:{}}\", 42, 6);") == "    42\n");
+  CHECK(run_ok("print(\"{:0{}}\", 42, 4);") == "0042\n");
+  CHECK(run_ok("print(\"{:{}.{}f}\", 1.5, 8, 2);") == "    1.50\n");
+  CHECK(run_ok("print(\"{1:.{0}f}\", 3, 1.5);") == "1.500\n");
+  CHECK(run_ok("print(\"до {} — {:.{}f}\", 2, 1.25, 2);") == "до 2 — 1.25\n");
+  CHECK(run_ok("for (let n = 0; n < 3; ++n) { print(\"{:.{}f}\", 1.5, n); }") ==
+        "2\n1.5\n1.50\n");
+
+  std::ostringstream err;
+  CHECK_FALSE(run("print(\"{:.{}f}\", 1.5);", err));
+  CHECK_FALSE(run("print(\"{:.{}f}\", 1.5, -1);", err));
+  CHECK_FALSE(run("print(\"{:.{}f}\", 1.5, 1.5);", err));
+  CHECK_FALSE(run("print(\"{:.{}f}\", 1.5, true);", err));
 }

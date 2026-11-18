@@ -40,6 +40,16 @@ TEST_CASE("braces are tokens") {
   CHECK(r.tokens[2].kind == TokenKind::End);
 }
 
+TEST_CASE("increment tokens are one token") {
+  auto r = tokenize("++ -- + +");
+  REQUIRE(r.error.code == ErrorCode::Ok);
+  REQUIRE(r.tokens.size() == 5);
+  CHECK(r.tokens[0].kind == TokenKind::PlusPlus);
+  CHECK(r.tokens[1].kind == TokenKind::MinusMinus);
+  CHECK(r.tokens[2].kind == TokenKind::Plus);
+  CHECK(r.tokens[3].kind == TokenKind::Plus);
+}
+
 TEST_CASE("equals followed by minus are separate tokens") {
   auto r = tokenize("neg =-1.23");
   REQUIRE(r.error.code == ErrorCode::Ok);

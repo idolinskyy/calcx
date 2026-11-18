@@ -1,0 +1,11 @@
+// category: Побут
+// title: Пропорція рецепта
+// blurb: Точні дроби: перерахунок інгредієнтів з 4 порцій на 5.
+let flour = 3/2;
+let sugar = 3/4;
+let butter = 1/3;
+let base = 4;
+let people = 5;
+print("борошно {}", flour * people / base);
+print("цукор {}", sugar * people / base);
+print("масло {}", butter * people / base);

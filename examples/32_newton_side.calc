@@ -1,0 +1,33 @@
+// category: Розрахунки
+// title: Сторона ділянки
+// blurb: Корінь площі методом Ньютона з різною кількістю знаків.
+fun sqrt_newton(x, eps) {
+  let y = 0.0;
+  if (x < 0) {
+    return sqrt_newton(abs(x), eps) * i;
+  }
+  if (x == 0 or x == 1) {
+    return x;
+  }
+  if (x > 1) {
+    y = x * 0.5;
+  } else {
+    y = 1;
+  }
+  let y_next = 0;
+  while (true) {
+    y_next = 0.5 * (y + x / y);
+    if (abs(y_next - y) <= eps * y_next) {
+      break;
+    }
+    y = y_next;
+  }
+  return y_next;
+}
+
+let area = 1500.0;
+for (let n = 0; n <= 4; ++n) {
+  let side = sqrt_newton(area, 1 / 10 ** (n + 1));
+  print("знаків {}  сторона {:.{}f} м", n, side, n);
+}
+print("перевірка {:.4f} м", sqrt(area));

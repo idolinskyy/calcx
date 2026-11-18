@@ -1,0 +1,17 @@
+// category: Звіти
+// title: Таблиця прайсу
+// blurb: Вирівняні колонки: код, кількість, ціна, сума.
+let rows = [
+  {code: 101, qty: 2, price: 4599},
+  {code: 214, qty: 1, price: 12900},
+  {code: 330, qty: 12, price: 875}
+];
+print("   код    шт       ціна       сума");
+let total = 0;
+for (row in rows) {
+  let sum = row.qty * row.price;
+  total = total + sum;
+  print("{:>6} {:>5} {:>10.2f} {:>10.2f}",
+        row.code, row.qty, row.price / 100, sum / 100);
+}
+print("разом {:>22.2f} грн", total / 100);

@@ -43,9 +43,8 @@ public:
     }
     chunk_.emit(OpCode::Halt);
     if (next_slot_ > kMaxU16) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, {},
-                "Забагато локальних змінних (макс. 65535)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, {},
+                                   "Забагато локальних змінних (макс. 65535)"));
     }
     chunk_.local_count = static_cast<std::uint16_t>(next_slot_);
     chunk_.local_names = std::move(local_names_);
@@ -59,9 +58,8 @@ public:
     }
     if (chunk_.code.size() > kMaxU16 + 1) {
       // Адреси інструкцій — u16; розмір може бути 65536 (останній байт @65535).
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, {},
-                "Завеликий байткод (адресa > 65535)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, {},
+                                   "Завеликий байткод (адресa > 65535)"));
     }
     return std::move(chunk_);
   }
@@ -99,9 +97,8 @@ private:
   [[nodiscard]] std::expected<std::uint16_t, Diagnostic>
   code_addr(SourcePos pos) {
     if (chunk_.code.size() > kMaxU16) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, pos,
-                "Завеликий байткод (адресa > 65535)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, pos,
+                                   "Завеликий байткод (адресa > 65535)"));
     }
     return static_cast<std::uint16_t>(chunk_.code.size());
   }
@@ -110,9 +107,8 @@ private:
   alloc_slot(SourcePos pos) {
     // local_count — u16; слоти 0..65534 (65535 штук).
     if (next_slot_ >= kMaxU16) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, pos,
-                "Забагато локальних змінних (макс. 65535)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, pos,
+                                   "Забагато локальних змінних (макс. 65535)"));
     }
     return static_cast<std::uint16_t>(next_slot_++);
   }
@@ -121,9 +117,8 @@ private:
   add_const(Value v, SourcePos pos) {
     auto idx = chunk_.add_constant(std::move(v));
     if (!idx) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, pos,
-                "Забагато констант (макс. 65536)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, pos,
+                                   "Забагато констант (макс. 65536)"));
     }
     return *idx;
   }
@@ -132,9 +127,8 @@ private:
   add_fmt(std::string fmt, SourcePos pos) {
     auto idx = chunk_.add_format(std::move(fmt));
     if (!idx) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, pos,
-                "Забагато рядків формату (макс. 65536)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, pos,
+                                   "Забагато рядків формату (макс. 65536)"));
     }
     return *idx;
   }
@@ -143,9 +137,8 @@ private:
   add_field_name(std::string name, SourcePos pos) {
     auto idx = chunk_.add_name(std::move(name));
     if (!idx) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, pos,
-                "Забагато імен полів (макс. 65536)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, pos,
+                                   "Забагато імен полів (макс. 65536)"));
     }
     return *idx;
   }
@@ -197,8 +190,9 @@ private:
                                    "Повторне оголошення функції"));
     }
     if (fun.params.size() > kMaxArgCount) {
-      return std::unexpected(error(ErrorCode::ArityMismatch, fun.name_pos,
-                                   "Занадто багато параметрів функції (макс. 255)"));
+      return std::unexpected(
+          error(ErrorCode::ArityMismatch, fun.name_pos,
+                "Занадто багато параметрів функції (макс. 255)"));
     }
     // Унікальні імена параметрів.
     std::unordered_map<std::string, bool> seen;
@@ -210,9 +204,8 @@ private:
       seen.emplace(p.name, true);
     }
     if (chunk_.functions.size() > kMaxU16) {
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, fun.name_pos,
-                "Забагато функцій (макс. 65536)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, fun.name_pos,
+                                   "Забагато функцій (макс. 65536)"));
     }
     FunctionProto proto;
     proto.name = fun.name;
@@ -266,9 +259,8 @@ private:
 
     if (next_slot_ > kMaxU16) {
       in_function_ = false;
-      return std::unexpected(
-          error(ErrorCode::BytecodeLimit, fun.name_pos,
-                "Забагато локальних змінних (макс. 65535)"));
+      return std::unexpected(error(ErrorCode::BytecodeLimit, fun.name_pos,
+                                   "Забагато локальних змінних (макс. 65535)"));
     }
     chunk_.functions[idx].local_count = static_cast<std::uint16_t>(next_slot_);
     chunk_.functions[idx].local_names = std::move(local_names_);
@@ -931,6 +923,107 @@ private:
                                    "Невірна кількість аргументів"));
     }
     chunk_.emit_call(OpCode::Call, found->second, argc);
+    return {};
+  }
+
+  [[nodiscard]] bool is_update_target(const Expr &expr) const {
+    return std::holds_alternative<VarExpr>(expr.node) ||
+           std::holds_alternative<IndexExpr>(expr.node) ||
+           std::holds_alternative<FieldExpr>(expr.node);
+  }
+
+  /// Залишає на стеку значення виразу: нове для префікса, старе для постфікса.
+  [[nodiscard]] std::expected<void, Diagnostic>
+  compile_node(const UpdateExpr &upd) {
+    if (!is_update_target(*upd.target)) {
+      return std::unexpected(
+          error(ErrorCode::UnexpectedToken, upd.pos,
+                "++ і -- можна лише для змінної, елемента масиву або поля"));
+    }
+    auto one = add_const(Value{Integer{1}}, upd.pos);
+    if (!one) {
+      return std::unexpected(one.error());
+    }
+    const OpCode arith = upd.increment ? OpCode::Add : OpCode::Sub;
+
+    if (const auto *var = std::get_if<VarExpr>(&upd.target->node)) {
+      auto slot = resolve_local(var->name);
+      if (!slot) {
+        return std::unexpected(error(ErrorCode::UndeclaredVariable, var->pos,
+                                     "Неоголошена змінна"));
+      }
+      if (!upd.prefix) {
+        chunk_.emit_u16(OpCode::LoadLocal, *slot);
+      }
+      chunk_.emit_u16(OpCode::LoadLocal, *slot);
+      chunk_.emit_u16(OpCode::LoadConst, *one);
+      chunk_.emit(arith);
+      if (upd.prefix) {
+        chunk_.emit(OpCode::Dup);
+      }
+      chunk_.emit_u16(OpCode::StoreLocal, *slot);
+      return {};
+    }
+
+    if (const auto *idx = std::get_if<IndexExpr>(&upd.target->node)) {
+      auto obj = compile_expr(*idx->object);
+      if (!obj) {
+        return std::unexpected(obj.error());
+      }
+      auto index = compile_expr(*idx->index);
+      if (!index) {
+        return std::unexpected(index.error());
+      }
+      chunk_.emit(OpCode::Dup2);
+      chunk_.emit(OpCode::LoadIndex);
+      // StoreIndex знімає value, index, array. Результат виразу тримаємо
+      // в слоті, щоб він не став замість індексу.
+      auto saved = alloc_slot(upd.pos);
+      if (!saved) {
+        return std::unexpected(saved.error());
+      }
+      if (!upd.prefix) {
+        chunk_.emit(OpCode::Dup);
+        chunk_.emit_u16(OpCode::StoreLocal, *saved);
+      }
+      chunk_.emit_u16(OpCode::LoadConst, *one);
+      chunk_.emit(arith);
+      if (upd.prefix) {
+        chunk_.emit(OpCode::Dup);
+        chunk_.emit_u16(OpCode::StoreLocal, *saved);
+      }
+      chunk_.emit(OpCode::StoreIndex);
+      chunk_.emit_u16(OpCode::LoadLocal, *saved);
+      return {};
+    }
+
+    const auto *fld = std::get_if<FieldExpr>(&upd.target->node);
+    auto obj = compile_expr(*fld->object);
+    if (!obj) {
+      return std::unexpected(obj.error());
+    }
+    auto ni = add_field_name(fld->field, fld->pos);
+    if (!ni) {
+      return std::unexpected(ni.error());
+    }
+    chunk_.emit(OpCode::Dup);
+    chunk_.emit_u16(OpCode::LoadField, *ni);
+    auto saved = alloc_slot(upd.pos);
+    if (!saved) {
+      return std::unexpected(saved.error());
+    }
+    if (!upd.prefix) {
+      chunk_.emit(OpCode::Dup);
+      chunk_.emit_u16(OpCode::StoreLocal, *saved);
+    }
+    chunk_.emit_u16(OpCode::LoadConst, *one);
+    chunk_.emit(arith);
+    if (upd.prefix) {
+      chunk_.emit(OpCode::Dup);
+      chunk_.emit_u16(OpCode::StoreLocal, *saved);
+    }
+    chunk_.emit_u16(OpCode::StoreField, *ni);
+    chunk_.emit_u16(OpCode::LoadLocal, *saved);
     return {};
   }
 

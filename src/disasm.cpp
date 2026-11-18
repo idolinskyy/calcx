@@ -167,6 +167,7 @@ void dump_opcode_legend(std::ostream &out) {
       OpCode::MakeArray,  OpCode::MakeRecord, OpCode::LoadIndex,
       OpCode::StoreIndex, OpCode::LoadField,  OpCode::StoreField,
       OpCode::HasField,   OpCode::Pop,        OpCode::MakeIter,
+      OpCode::Dup,        OpCode::Dup2,
   };
   constexpr std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {
@@ -262,6 +263,10 @@ std::string_view opcode_name(OpCode op) {
     return "Pop";
   case OpCode::MakeIter:
     return "MakeIter";
+  case OpCode::Dup:
+    return "Dup";
+  case OpCode::Dup2:
+    return "Dup2";
   }
   return "???";
 }

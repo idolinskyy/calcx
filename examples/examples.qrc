@@ -1,0 +1,44 @@
+<RCC>
+  <qresource prefix="/examples">
+    <file>01_tips.calc</file>
+    <file>02_vat.calc</file>
+    <file>03_change.calc</file>
+    <file>04_discount.calc</file>
+    <file>05_currency.calc</file>
+    <file>06_invoice.calc</file>
+    <file>07_payroll.calc</file>
+    <file>08_deposit.calc</file>
+    <file>09_annuity.calc</file>
+    <file>10_savings.calc</file>
+    <file>11_breakeven.calc</file>
+    <file>12_amortization.calc</file>
+    <file>13_recipe.calc</file>
+    <file>14_bmi.calc</file>
+    <file>15_temp.calc</file>
+    <file>16_speed.calc</file>
+    <file>17_circle.calc</file>
+    <file>18_distance.calc</file>
+    <file>19_quadratic.calc</file>
+    <file>20_azimuth.calc</file>
+    <file>21_stats.calc</file>
+    <file>22_median.calc</file>
+    <file>23_grades.calc</file>
+    <file>24_histogram.calc</file>
+    <file>25_price_lookup.calc</file>
+    <file>26_mixed_sum.calc</file>
+    <file>27_optional_discount.calc</file>
+    <file>28_clone_stock.calc</file>
+    <file>29_ratio.calc</file>
+    <file>30_choose.calc</file>
+    <file>31_packs.calc</file>
+    <file>32_newton_side.calc</file>
+    <file>33_ohm.calc</file>
+    <file>34_divider.calc</file>
+    <file>35_rc_filter.calc</file>
+    <file>36_impedance.calc</file>
+    <file>37_gas_bottle.calc</file>
+    <file>38_pendulum.calc</file>
+    <file>39_signal_delay.calc</file>
+    <file>40_price_report.calc</file>
+  </qresource>
+</RCC>

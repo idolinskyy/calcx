@@ -48,6 +48,8 @@ enum class OpCode : std::uint8_t {
   HasField,    ///< u16 name_index; pop record → Boolean (чи є поле)
   Pop,         ///< відкинути вершину стека (ExprStmt)
   MakeIter,    ///< u8 mode (1|2): coll → масив елементів/пар для for-in
+  Dup,         ///< дубль вершини стека
+  Dup2,        ///< дубль двох верхніх значень (низ, верх)
 };
 
 /// Прототип скомпільованої функції користувача.

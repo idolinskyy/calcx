@@ -1,0 +1,30 @@
+// category: Дані
+// title: Медіана термінів
+// blurb: Сортує дні виконання і бере середину списку.
+fun sort_up(a) {
+  let i = 1;
+  while (i < len(a)) {
+    let key = a[i];
+    let j = i - 1;
+    while (j >= 0) {
+      if (a[j] <= key) {
+        break;
+      }
+      a[j + 1] = a[j];
+      --j;
+    }
+    a[j + 1] = key;
+    ++i;
+  }
+}
+
+let days = [7, 3, 9, 3, 12, 5, 8];
+sort_up(days);
+let n = len(days);
+let mid = int(n / 2);
+print("після сортування {}", days);
+if (n % 2 == 1) {
+  print("медіана {}", days[mid]);
+} else {
+  print("медіана {}", (days[mid - 1] + days[mid]) / 2);
+}

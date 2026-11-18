@@ -1,0 +1,9 @@
+// category: Гроші
+// title: Чайові
+// blurb: 10% від рахунку в копійках і сума до сплати.
+let bill = 48750;
+let tip = int(round(bill * 10 / 100));
+let due = bill + tip;
+print("рахунок   {}.{:02d} грн", int(bill / 100), bill % 100);
+print("чайові    {}.{:02d} грн", int(tip / 100), tip % 100);
+print("до сплати {}.{:02d} грн", int(due / 100), due % 100);

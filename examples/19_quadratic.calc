@@ -1,0 +1,12 @@
+// category: Виміри
+// title: Квадратне рівняння
+// blurb: Два корені, зокрема комплексні, якщо дискримінант від'ємний.
+fun solve(a, b, c) {
+  let d = b * b - 4 * a * c;
+  let s = sqrt(d);
+  return {x1: (-b + s) / (2 * a), x2: (-b - s) / (2 * a)};
+}
+let real_roots = solve(1, -3, 2);
+print("x² - 3x + 2: {} і {}", real_roots.x1, real_roots.x2);
+let complex_roots = solve(1, 2, 5);
+print("x² + 2x + 5: {} і {}", complex_roots.x1, complex_roots.x2);

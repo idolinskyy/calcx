@@ -22,27 +22,32 @@ QStringList keywords() {
 }
 
 QStringList builtinNames() {
-  return {
-      QStringLiteral("sin"),   QStringLiteral("cos"),  QStringLiteral("tan"),
-      QStringLiteral("asin"),  QStringLiteral("acos"), QStringLiteral("atan"),
-      QStringLiteral("atan2"), QStringLiteral("sinh"), QStringLiteral("cosh"),
-      QStringLiteral("tanh"),  QStringLiteral("sqrt"), QStringLiteral("exp"),
-      QStringLiteral("ln"),    QStringLiteral("log"),  QStringLiteral("log10"),
-      QStringLiteral("log2"),  QStringLiteral("pow"),  QStringLiteral("hypot"),
-      QStringLiteral("abs"),   QStringLiteral("sign"), QStringLiteral("re"),
-      QStringLiteral("im"),    QStringLiteral("arg"),  QStringLiteral("conj"),
-      QStringLiteral("floor"), QStringLiteral("ceil"), QStringLiteral("round"),
-      QStringLiteral("trunc"), QStringLiteral("min"),  QStringLiteral("max"),
-      QStringLiteral("deg"),   QStringLiteral("rad"),  QStringLiteral("len"),
-      QStringLiteral("push"),  QStringLiteral("pop"),  QStringLiteral("clone"),
-      QStringLiteral("same"),  QStringLiteral("int"),  QStringLiteral("real"),
-      QStringLiteral("bool"),  QStringLiteral("complex"),
-      QStringLiteral("rational"),
-      QStringLiteral("is_bool"),     QStringLiteral("is_int"),
-      QStringLiteral("is_rational"), QStringLiteral("is_real"),
-      QStringLiteral("is_complex"),  QStringLiteral("is_number"),
-      QStringLiteral("is_array"),    QStringLiteral("is_record"),
-      QStringLiteral("is_string")};
+  return {QStringLiteral("sin"),         QStringLiteral("cos"),
+          QStringLiteral("tan"),         QStringLiteral("asin"),
+          QStringLiteral("acos"),        QStringLiteral("atan"),
+          QStringLiteral("atan2"),       QStringLiteral("sinh"),
+          QStringLiteral("cosh"),        QStringLiteral("tanh"),
+          QStringLiteral("sqrt"),        QStringLiteral("exp"),
+          QStringLiteral("ln"),          QStringLiteral("log"),
+          QStringLiteral("log10"),       QStringLiteral("log2"),
+          QStringLiteral("pow"),         QStringLiteral("hypot"),
+          QStringLiteral("abs"),         QStringLiteral("sign"),
+          QStringLiteral("re"),          QStringLiteral("im"),
+          QStringLiteral("arg"),         QStringLiteral("conj"),
+          QStringLiteral("floor"),       QStringLiteral("ceil"),
+          QStringLiteral("round"),       QStringLiteral("trunc"),
+          QStringLiteral("min"),         QStringLiteral("max"),
+          QStringLiteral("deg"),         QStringLiteral("rad"),
+          QStringLiteral("len"),         QStringLiteral("push"),
+          QStringLiteral("pop"),         QStringLiteral("clone"),
+          QStringLiteral("same"),        QStringLiteral("int"),
+          QStringLiteral("real"),        QStringLiteral("bool"),
+          QStringLiteral("complex"),     QStringLiteral("rational"),
+          QStringLiteral("is_bool"),     QStringLiteral("is_int"),
+          QStringLiteral("is_rational"), QStringLiteral("is_real"),
+          QStringLiteral("is_complex"),  QStringLiteral("is_number"),
+          QStringLiteral("is_array"),    QStringLiteral("is_record"),
+          QStringLiteral("is_string")};
 }
 
 QStringList constantNames() {
@@ -143,11 +148,14 @@ QString builtinHover(calc::BuiltinId id) {
   case calc::BuiltinId::Rad:
     return QStringLiteral("rad(x) — градуси в радіани.");
   case calc::BuiltinId::Len:
-    return QStringLiteral("len(x) — кількість елементів масиву або полів запису.");
+    return QStringLiteral(
+        "len(x) — кількість елементів масиву або полів запису.");
   case calc::BuiltinId::Push:
-    return QStringLiteral("push(arr, x) — додає x у кінець масиву і повертає його.");
+    return QStringLiteral(
+        "push(arr, x) — додає x у кінець масиву і повертає його.");
   case calc::BuiltinId::Pop:
-    return QStringLiteral("pop(arr) — знімає останній елемент масиву і повертає його.");
+    return QStringLiteral(
+        "pop(arr) — знімає останній елемент масиву і повертає його.");
   case calc::BuiltinId::Clone:
     return QStringLiteral(
         "clone(x) — повна копія масиву або запису. Число повертається як є.");
@@ -155,8 +163,8 @@ QString builtinHover(calc::BuiltinId id) {
     return QStringLiteral(
         "same(a, b) — true, якщо це той самий масив або запис у пам'яті.");
   case calc::BuiltinId::Int:
-    return QStringLiteral(
-        "int(x) — до цілого, дробова частина відкидається. Inf і NaN — помилка.");
+    return QStringLiteral("int(x) — до цілого, дробова частина відкидається. "
+                          "Inf і NaN — помилка.");
   case calc::BuiltinId::RealCast:
     return QStringLiteral("real(x) — до дійсного числа.");
   case calc::BuiltinId::BoolCast:
@@ -185,21 +193,21 @@ QString builtinHover(calc::BuiltinId id) {
   case calc::BuiltinId::IsRecord:
     return QStringLiteral("is_record(x) — true, якщо значення — запис.");
   case calc::BuiltinId::IsString:
-    return QStringLiteral(
-        "is_string(x) — true для ключа запису в циклі for.");
+    return QStringLiteral("is_string(x) — true для ключа запису в циклі for.");
   }
   return {};
 }
 
 QString keywordHover(const QString &ident) {
   if (ident == QLatin1String("let")) {
-    return QStringLiteral(
-        "let — оголосити змінну. Кілька імен через кому:\n"
-        "let a = 1, b = 2, c = complex(1, 2);");
+    return QStringLiteral("let — оголосити змінну. Кілька імен через кому:\n"
+                          "let a = 1, b = 2, c = complex(1, 2);");
   }
   if (ident == QLatin1String("print")) {
     return QStringLiteral(
-        "print — вивести значення. У файлі в кінці потрібна крапка з комою.");
+        "print — вивести значення або рядок формату ({}, {:.2f}, {:.{}f}).\n"
+        "Ширина й точність — цілий аргумент від нуля. У файлі в кінці потрібна "
+        "крапка з комою.");
   }
   if (ident == QLatin1String("if")) {
     return QStringLiteral(
@@ -212,8 +220,8 @@ QString keywordHover(const QString &ident) {
     return QStringLiteral("while — цикл, поки умова true.");
   }
   if (ident == QLatin1String("for")) {
-    return QStringLiteral(
-        "for x in масив або запис — цикл по елементах. Для запису x — це ключ.");
+    return QStringLiteral("for x in масив або запис — цикл по елементах. Для "
+                          "запису x — це ключ.");
   }
   if (ident == QLatin1String("in")) {
     return QStringLiteral("in — у циклі for: for x in xs { ... }");
@@ -225,8 +233,7 @@ QString keywordHover(const QString &ident) {
     return QStringLiteral("continue — одразу до наступної ітерації циклу.");
   }
   if (ident == QLatin1String("fun")) {
-    return QStringLiteral(
-        "fun ім'я(аргументи) { ... } — оголосити функцію.");
+    return QStringLiteral("fun ім'я(аргументи) { ... } — оголосити функцію.");
   }
   if (ident == QLatin1String("return")) {
     return QStringLiteral("return — повернути значення з функції.");
@@ -238,18 +245,19 @@ QString keywordHover(const QString &ident) {
     return QStringLiteral("false — логічне «ні».");
   }
   if (ident == QLatin1String("and")) {
-    return QStringLiteral("and — логічне «і». Обидва боки мають бути true/false.");
+    return QStringLiteral(
+        "and — логічне «і». Обидва боки мають бути true/false.");
   }
   if (ident == QLatin1String("or")) {
-    return QStringLiteral("or — логічне «або». Обидва боки мають бути true/false.");
+    return QStringLiteral(
+        "or — логічне «або». Обидва боки мають бути true/false.");
   }
   if (ident == QLatin1String("not")) {
     return QStringLiteral("not — логічне «ні».");
   }
   if (ident == QLatin1String("has")) {
-    return QStringLiteral(
-        "запис has поле — true, якщо в записі є таке поле.\n"
-        "Правий бік — ім'я поля, не вираз.");
+    return QStringLiteral("запис has поле — true, якщо в записі є таке поле.\n"
+                          "Правий бік — ім'я поля, не вираз.");
   }
   return {};
 }

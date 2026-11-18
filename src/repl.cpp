@@ -162,6 +162,8 @@ void paint(Replxx::colors_t &colors, std::size_t from_cp, std::size_t to_cp,
     return C::DEFAULT;
   case TokenKind::Plus:
   case TokenKind::Minus:
+  case TokenKind::PlusPlus:
+  case TokenKind::MinusMinus:
   case TokenKind::Star:
   case TokenKind::StarStar:
   case TokenKind::Slash:

@@ -161,6 +161,8 @@ void CalxHighlighter::highlightSource(const QString &text, int offset) {
       break;
     case calc::TokenKind::Plus:
     case calc::TokenKind::Minus:
+    case calc::TokenKind::PlusPlus:
+    case calc::TokenKind::MinusMinus:
     case calc::TokenKind::Star:
     case calc::TokenKind::StarStar:
     case calc::TokenKind::Slash:

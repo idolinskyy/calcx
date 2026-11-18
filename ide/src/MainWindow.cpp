@@ -7,6 +7,7 @@
 #include "docks/FunsDock.h"
 #include "docks/VarsDock.h"
 #include "editor/CalxEditor.h"
+#include "examples/ExamplesDialog.h"
 #include "help/HelpDialog.h"
 #include "repl/ReplWidget.h"
 
@@ -328,6 +329,8 @@ void MainWindow::createMenus() {
                       QKeySequence::New);
   fileMenu->addAction(QStringLiteral("Відкрити…"), this, &MainWindow::openFile,
                       QKeySequence::Open);
+  fileMenu->addAction(QStringLiteral("Приклади…"), this,
+                      &MainWindow::openExamples);
   fileMenu->addAction(QStringLiteral("Зберегти"), this, &MainWindow::saveFile,
                       QKeySequence::Save);
   fileMenu->addAction(QStringLiteral("Зберегти як…"), this,
@@ -438,6 +441,8 @@ void MainWindow::createMenus() {
   auto *helpAction = helpMenu->addAction(QStringLiteral("Як користуватись…"),
                                          this, &MainWindow::openHelp);
   helpAction->setShortcut(QKeySequence::HelpContents);
+  helpMenu->addAction(QStringLiteral("Приклади…"), this,
+                      &MainWindow::openExamples);
   helpMenu->addSeparator();
   helpMenu->addAction(QStringLiteral("Про програму…"), this,
                       &MainWindow::openAbout);
@@ -685,6 +690,32 @@ void MainWindow::openHelp() {
     help_ = new HelpDialog(this);
   }
   help_->openSection(QStringLiteral("overview"));
+}
+
+void MainWindow::openExamples() {
+  if (!examples_) {
+    examples_ = new ExamplesDialog(this);
+    connect(examples_, &ExamplesDialog::openInEditor, this,
+            &MainWindow::loadExample);
+  }
+  examples_->show();
+  examples_->raise();
+  examples_->activateWindow();
+}
+
+void MainWindow::loadExample(const QString &source) {
+  if (!maybeSave()) {
+    return;
+  }
+  editor_->setPlainText(source);
+  editor_->clearBreakpoints();
+  editor_->clearDiagnostics();
+  currentFile_.clear();
+  dirty_ = true;
+  updateWindowTitle();
+  switchEditorMode();
+  statusBar()->showMessage(
+      QStringLiteral("Приклад у редакторі. Ctrl+R — запустити."), 4000);
 }
 
 void MainWindow::openAbout() {

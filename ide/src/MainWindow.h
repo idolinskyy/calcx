@@ -13,6 +13,7 @@ class ConstsDock;
 class DisasmDock;
 class DebugController;
 class HelpDialog;
+class ExamplesDialog;
 class QStackedWidget;
 class QLabel;
 class QAction;
@@ -46,6 +47,8 @@ private slots:
   void switchReplMode();
   void toggleTheme();
   void openHelp();
+  void openExamples();
+  void loadExample(const QString &source);
   void openAbout();
   void openAboutQt();
   void onDebugFinished(const QString &outputDelta);
@@ -84,6 +87,7 @@ private:
 
   DebugController *debugger_{nullptr};
   HelpDialog *help_{nullptr};
+  ExamplesDialog *examples_{nullptr};
   QLabel *statusMode_{nullptr};
   QLabel *statusPos_{nullptr};
 

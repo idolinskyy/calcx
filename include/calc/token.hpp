@@ -38,6 +38,8 @@ enum class TokenKind {
   Has, ///< record has field
   Plus,
   Minus,
+  PlusPlus,   ///< ++
+  MinusMinus, ///< --
   Star,
   StarStar, ///< **
   Slash,

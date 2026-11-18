@@ -1,0 +1,13 @@
+// category: Побут
+// title: Температура
+// blurb: Цельсій у Фаренгейт і в кельвіни.
+fun c_to_f(c) {
+  return c * 9 / 5 + 32;
+}
+fun c_to_k(c) {
+  return c + celsius0;
+}
+let points = [0.0, 20.0, 36.6, 100.0];
+for (c in points) {
+  print("{:.1f} °C = {:.1f} °F = {:.2f} K", c, c_to_f(c), c_to_k(c));
+}

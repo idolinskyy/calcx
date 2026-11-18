@@ -365,11 +365,19 @@ LexResult tokenize(std::string_view source) {
     };
 
     if (c == '+') {
-      push_simple(TokenKind::Plus);
+      if (cur.peek(1) == '+') {
+        push_simple(TokenKind::PlusPlus, 2);
+      } else {
+        push_simple(TokenKind::Plus);
+      }
       continue;
     }
     if (c == '-') {
-      push_simple(TokenKind::Minus);
+      if (cur.peek(1) == '-') {
+        push_simple(TokenKind::MinusMinus, 2);
+      } else {
+        push_simple(TokenKind::Minus);
+      }
       continue;
     }
     if (c == '*') {

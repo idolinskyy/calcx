@@ -1,0 +1,23 @@
+// category: Дані
+// title: Середнє і розкид
+// blurb: Середнє, мінімум, максимум і стандартне відхилення вибірки.
+let xs = [12.4, 11.8, 13.1, 12.0, 12.7, 14.2, 11.5];
+let n = len(xs);
+let sum = 0.0;
+let lo = xs[0];
+let hi = xs[0];
+for (x in xs) {
+  sum = sum + x;
+  lo = min(lo, x);
+  hi = max(hi, x);
+}
+let mean = sum / n;
+let acc = 0.0;
+for (x in xs) {
+  let d = x - mean;
+  acc = acc + d * d;
+}
+print("n = {}", n);
+print("середнє {:.3f}", mean);
+print("від {:.3f} до {:.3f}", lo, hi);
+print("с.к.в. {:.3f}", sqrt(acc / (n - 1)));

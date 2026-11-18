@@ -1,0 +1,14 @@
+// category: Дані
+// title: Склад: те саме і копія
+// blurb: Друге ім'я змінює залишок, clone — окрема чернетка.
+let stock = [{sku: 1, qty: 10}, {sku: 2, qty: 4}];
+let view = stock;
+view[0].qty = view[0].qty - 3;
+print("після списання через друге ім'я: {}", stock[0].qty);
+
+let draft = clone(stock);
+draft[1].qty = 0;
+print("оригінал sku 2: {}", stock[1].qty);
+print("чернетка sku 2: {}", draft[1].qty);
+print("view — той самий масив: {}", same(stock, view));
+print("draft — копія: {}", same(stock, draft));

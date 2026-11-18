@@ -1,0 +1,10 @@
+// category: Фізика
+// title: Газ у балоні
+// blurb: Скільки молей у 50 л за кімнатної температури і 1 атм.
+let p = atm;
+let v = 0.05;
+let t = 21 + celsius0;
+let moles = p * v / (R * t);
+print("температура {:.2f} K", t);
+print("у балоні {:.3f} моль", moles);
+print("повітря ≈ {:.0f} г", moles * 29);

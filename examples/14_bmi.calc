@@ -1,0 +1,16 @@
+// category: Побут
+// title: Індекс маси тіла
+// blurb: ІМТ і коротка позначка діапазону.
+let kg = 82.0;
+let m = 1.78;
+let bmi = kg / (m * m);
+print("ІМТ {:.1f}", bmi);
+if (bmi < 18.5) {
+  print("недостатня маса");
+} else if (bmi < 25) {
+  print("норма");
+} else if (bmi < 30) {
+  print("надлишок");
+} else {
+  print("ожиріння");
+}
